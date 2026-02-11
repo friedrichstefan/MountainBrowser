@@ -2,19 +2,25 @@
 //  AppleTVBrowserApp.swift
 //  AppleTVBrowser
 //
-//  Created by Friedrich, Stefan on 09.02.26.
-//
 
 import SwiftUI
 import SwiftData
 
 @main
 struct AppleTVBrowserApp: App {
+    @State private var controlManager = TVOSControlManager.shared
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Bookmark.self,
+            BookmarkFolder.self,
+            HistoryEntry.self
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .automatic // Enable iCloud sync
+        )
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
@@ -25,7 +31,11 @@ struct AppleTVBrowserApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainBrowserView()
+                .tvOSRemoteOptimized()
+                .onAppear {
+                    TVOSInputConfiguration.configure()
+                }
         }
         .modelContainer(sharedModelContainer)
     }
