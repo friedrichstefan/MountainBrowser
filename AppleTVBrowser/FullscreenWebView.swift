@@ -27,8 +27,7 @@ struct FullscreenWebView: View {
     // Animationswerte für sanftes Verschwinden
     @State private var helpHintOpacity: Double = 1.0
     @State private var helpHintOffset: CGFloat = 0
-    @State private var helpHintScaleX: CGFloat = 1.0
-    @State private var helpHintScaleY: CGFloat = 1.0
+    @State private var helpHintScale: CGFloat = 1.0
     @State private var helpHintBlur: CGFloat = 0
     
     // Shared WebView Controller
@@ -90,7 +89,7 @@ struct FullscreenWebView: View {
                     helpHint
                         .opacity(helpHintOpacity)
                         .offset(y: helpHintOffset)
-                        .scaleEffect(x: helpHintScaleX, y: helpHintScaleY)
+                        .scaleEffect(helpHintScale)
                         .blur(radius: helpHintBlur)
                         .padding(.bottom, 40)
                 }
@@ -109,53 +108,20 @@ struct FullscreenWebView: View {
     // MARK: - Smooth Help Hint Fade Out Animation
     
     private func startSmoothHelpHintFadeOut() {
-        // Phase 1: Nach 5 Sekunden - sanftes Dimmen beginnt
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            withAnimation(.easeInOut(duration: 2.5)) {
-                helpHintOpacity = 0.7
-            }
-        }
-        
-        // Phase 2: Nach 7 Sekunden - weiter dimmen, leichter Blur
-        DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
-            withAnimation(.easeInOut(duration: 2.0)) {
-                helpHintOpacity = 0.5
-                helpHintBlur = 1
-            }
-        }
-        
-        // Phase 3: Nach 9 Sekunden - horizontal zusammenziehen beginnt
-        DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
-            withAnimation(.easeInOut(duration: 1.5)) {
-                helpHintOpacity = 0.3
-                helpHintScaleX = 0.85
-                helpHintBlur = 3
-            }
-        }
-        
-        // Phase 4: Nach 10.5 Sekunden - stark zusammenziehen + nach unten gleiten
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10.5) {
-            withAnimation(.spring(response: 1.0, dampingFraction: 0.6)) {
-                helpHintOpacity = 0.1
-                helpHintScaleX = 0.4
-                helpHintScaleY = 0.6
-                helpHintOffset = 60
-                helpHintBlur = 8
-            }
-        }
-        
-        // Phase 5: Nach 12 Sekunden - komplett verschwinden (zu einem Punkt)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
-            withAnimation(.easeOut(duration: 0.6)) {
+        // Nach 6 Sekunden: Eine durchgehende, nahtlose Animation
+        // Erst langsam dimmen, dann beschleunigt zusammenziehen
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+            // Alles in einer Animation mit custom Timing Curve
+            // Die Kurve startet langsam (Dimmen) und beschleunigt dann (Zusammenziehen)
+            withAnimation(.timingCurve(0.4, 0.0, 0.2, 1.0, duration: 3.5)) {
                 helpHintOpacity = 0
-                helpHintScaleX = 0.1
-                helpHintScaleY = 0.2
-                helpHintOffset = 80
-                helpHintBlur = 15
+                helpHintScale = 0.3
+                helpHintOffset = 50
+                helpHintBlur = 12
             }
             
             // View entfernen nach Animation
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.7) {
                 showHelpHint = false
             }
         }
@@ -407,8 +373,36 @@ class WebViewScrollController: ObservableObject {
     weak var webView: UIView?
     weak var hostController: WebViewHostController?
     
+    // Smooth scroll mit CSS behavior und momentum
+    func smoothScroll(by offset: CGFloat) {
+        DispatchQueue.main.async { [weak self] in
+            guard let webView = self?.webView else {
+                print("❌ WebView nicht verfügbar für Scroll")
+                return
+            }
+            
+            let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+            if webView.responds(to: jsSelector) {
+                // Smooth scroll mit CSS behavior
+                let scrollJS = """
+                    const currentY = window.pageYOffset;
+                    const targetY = currentY + \(Int(offset));
+                    window.scrollTo({
+                        top: targetY,
+                        behavior: 'smooth'
+                    });
+                    true;
+                """
+                _ = webView.perform(jsSelector, with: scrollJS)
+                print("🌊 Smooth Scroll: \(Int(offset))px")
+            } else {
+                print("❌ JavaScript nicht verfügbar")
+            }
+        }
+    }
+    
+    // Legacy direktes Scrollen für sehr kleine Adjustments
     func scroll(by offset: CGFloat) {
-        // JavaScript-basiertes Scrollen
         DispatchQueue.main.async { [weak self] in
             guard let webView = self?.webView else {
                 print("❌ WebView nicht verfügbar für Scroll")
@@ -617,21 +611,21 @@ class WebViewHostController: UIViewController {
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
         
-        // Skip Forward = Scroll Down
+        // Skip Forward = Scroll Down (optimiert für smoothere Bewegung)
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
-            print("⏩ Skip Forward -> Scroll Down")
-            self?.scrollController?.scroll(by: 300)
+            print("⏩ Skip Forward -> Smooth Scroll Down")
+            self?.scrollController?.smoothScroll(by: 180)
             return .success
         }
         
-        // Skip Backward = Scroll Up
+        // Skip Backward = Scroll Up (optimiert für smoothere Bewegung)
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
-            print("⏪ Skip Backward -> Scroll Up")
-            self?.scrollController?.scroll(by: -300)
+            print("⏪ Skip Backward -> Smooth Scroll Up")
+            self?.scrollController?.smoothScroll(by: -180)
             return .success
         }
         
@@ -723,6 +717,7 @@ class WebViewHostController: UIViewController {
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
         
         switch gesture.state {
         case .began:
@@ -733,11 +728,30 @@ class WebViewHostController: UIViewController {
         case .changed:
             let deltaY = translation.y - lastPanY
             lastPanY = translation.y
-            let scrollAmount = -deltaY * 15.0
-            scrollController?.scroll(by: scrollAmount)
             
-        case .ended, .cancelled:
-            print("🖐️ Pan ended")
+            // Optimierter Multiplikator für smoothere Touchpad-Erfahrung
+            let scrollAmount = -deltaY * 8.5
+            
+            // Verwende smooth scroll für kleinere Bewegungen
+            if abs(scrollAmount) < 50 {
+                scrollController?.smoothScroll(by: scrollAmount)
+            } else {
+                scrollController?.scroll(by: scrollAmount)
+            }
+            
+        case .ended:
+            print("🖐️ Pan ended - adding momentum")
+            isPanning = false
+            lastPanY = 0
+            
+            // Momentum-Effekt basierend auf Geschwindigkeit
+            let momentumY = -velocity.y * 0.3
+            if abs(momentumY) > 20 {
+                scrollController?.smoothScroll(by: min(max(momentumY, -200), 200))
+            }
+            
+        case .cancelled:
+            print("🖐️ Pan cancelled")
             isPanning = false
             lastPanY = 0
             
@@ -773,12 +787,12 @@ class WebViewHostController: UIViewController {
                 
             case .upArrow:
                 print("⬆️ Up Arrow gedrückt")
-                startContinuousScroll(direction: -200)
+                startSmoothContinuousScroll(direction: -120)
                 handled = true
                 
             case .downArrow:
                 print("⬇️ Down Arrow gedrückt")
-                startContinuousScroll(direction: 200)
+                startSmoothContinuousScroll(direction: 120)
                 handled = true
                 
             case .playPause:
@@ -813,16 +827,19 @@ class WebViewHostController: UIViewController {
         super.pressesCancelled(presses, with: event)
     }
     
-    private func startContinuousScroll(direction: CGFloat) {
+    // Neue smoother continuous scroll Implementierung
+    private func startSmoothContinuousScroll(direction: CGFloat) {
         currentScrollDirection = direction
-        // Sofort scrollen
-        scrollController?.scroll(by: direction)
         
-        // Timer für kontinuierliches Scrollen
+        // Erster Scroll mit smooth CSS behavior
+        scrollController?.smoothScroll(by: direction)
+        
+        // Timer mit längerem Intervall für smoothere Bewegung
         scrollTimer?.invalidate()
-        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            self.scrollController?.scroll(by: self.currentScrollDirection)
+            // Verwende smooth scroll für kontinuierliche Bewegung
+            self.scrollController?.smoothScroll(by: self.currentScrollDirection * 0.8)
         }
     }
     
@@ -973,9 +990,9 @@ struct SafariURLBar: View {
                         isFocused ? Color.white.opacity(0.8) : Color.clear,
                         lineWidth: 2
                     )
-                    .padding(1) // Inset um Überlappung zu vermeiden
+                    .padding(1)
             )
-            .scaleEffect(isFocused ? 1.05 : 1.0) // Reduzierte Skalierung
+            .scaleEffect(isFocused ? 1.05 : 1.0)
             .shadow(
                 color: isFocused ? Color.white.opacity(0.3) : Color.black.opacity(0.2),
                 radius: isFocused ? 12 : 8,
