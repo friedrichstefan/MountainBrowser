@@ -90,78 +90,62 @@ struct FullscreenWebView: View {
     // MARK: - Navigation Bar
     
     private var navigationBar: some View {
-        HStack(spacing: 20) {
-            Button(action: {
+        HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            // Zurück-Button mit tvOS Focus Style
+            TVOSNavButton(
+                icon: "chevron.left",
+                label: "Zurück",
+                isEnabled: true
+            ) {
                 dismiss()
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
-                    Text("Zurück")
-                        .font(.system(size: 20, weight: .medium))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.2))
-                )
             }
-            .buttonStyle(PlainButtonStyle())
             
-            VStack(alignment: .leading, spacing: 4) {
+            // Seiten-Info
+            VStack(alignment: .leading, spacing: 6) {
                 Text(pageTitle.isEmpty ? "Laden..." : pageTitle)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                    .foregroundColor(TVOSDesign.Colors.primaryLabel)
                     .lineLimit(1)
                 
                 Text(urlString)
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(.gray)
+                    .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
+                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             
+            // Navigation Controls
             HStack(spacing: 16) {
-                Button(action: { webViewController.goBack() }) {
-                    Image(systemName: "arrow.left")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(canGoBack ? .white : .gray)
-                        .padding(12)
-                        .background(Circle().fill(Color.white.opacity(canGoBack ? 0.2 : 0.1)))
+                TVOSNavIconButton(
+                    icon: "arrow.left",
+                    isEnabled: canGoBack
+                ) {
+                    webViewController.goBack()
                 }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(!canGoBack)
                 
-                Button(action: { webViewController.goForward() }) {
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(canGoForward ? .white : .gray)
-                        .padding(12)
-                        .background(Circle().fill(Color.white.opacity(canGoForward ? 0.2 : 0.1)))
+                TVOSNavIconButton(
+                    icon: "arrow.right",
+                    isEnabled: canGoForward
+                ) {
+                    webViewController.goForward()
                 }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(!canGoForward)
                 
-                Button(action: { webViewController.reload() }) {
-                    Image(systemName: isLoading ? "xmark" : "arrow.clockwise")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(12)
-                        .background(Circle().fill(Color.white.opacity(0.2)))
+                TVOSNavIconButton(
+                    icon: isLoading ? "xmark" : "arrow.clockwise",
+                    isEnabled: true
+                ) {
+                    webViewController.reload()
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, 40)
-        .padding(.vertical, 20)
+        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
+        .padding(.vertical, 24)
         .background(
             LinearGradient(
                 gradient: Gradient(colors: [
-                    Color.black.opacity(0.95),
-                    Color.black.opacity(0.8),
-                    Color.black.opacity(0.0)
+                    TVOSDesign.Colors.background.opacity(0.98),
+                    TVOSDesign.Colors.background.opacity(0.9),
+                    TVOSDesign.Colors.background.opacity(0.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
@@ -171,48 +155,158 @@ struct FullscreenWebView: View {
     }
     
     private var helpHint: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.system(size: 20))
-            Text("Pfeile/Wischen: Scrollen")
-                .font(.system(size: 18, weight: .medium))
+        HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 22))
+                Text("Pfeile/Wischen: Scrollen")
+                    .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
+            }
             
             Spacer()
             
-            Image(systemName: "playpause")
-                .font(.system(size: 20))
-            Text("Play/Pause: Leiste ein/aus")
-                .font(.system(size: 18, weight: .medium))
+            HStack(spacing: 10) {
+                Image(systemName: "playpause.fill")
+                    .font(.system(size: 22))
+                Text("Play/Pause: Leiste ein/aus")
+                    .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
+            }
         }
-        .foregroundColor(.white.opacity(0.7))
-        .padding(.horizontal, 30)
-        .padding(.vertical, 16)
+        .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+        .padding(.horizontal, TVOSDesign.Spacing.cardSpacing)
+        .padding(.vertical, 20)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.8))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(TVOSDesign.Colors.secondaryBackground.opacity(0.95))
+                .shadow(color: Color.black.opacity(0.3), radius: 20, y: 10)
         )
-        .padding(.horizontal, 40)
+        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
     }
     
     private var loadingIndicator: some View {
         VStack {
             Spacer()
-            HStack(spacing: 16) {
+            HStack(spacing: 20) {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(1.5)
+                    .scaleEffect(2.0)
                 Text("Laden...")
-                    .foregroundColor(.white)
-                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                    .font(.system(size: TVOSDesign.Typography.callout, weight: .medium))
             }
-            .padding(.horizontal, 30)
-            .padding(.vertical, 20)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 28)
             .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.black.opacity(0.8))
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .fill(TVOSDesign.Colors.secondaryBackground.opacity(0.95))
+                    .shadow(color: Color.black.opacity(0.4), radius: 25, y: 10)
             )
             Spacer()
         }
+    }
+}
+
+// MARK: - tvOS Navigation Button Components
+
+struct TVOSNavButton: View {
+    let icon: String
+    let label: String
+    let isEnabled: Bool
+    let action: () -> Void
+    
+    @FocusState private var isFocused: Bool
+    @State private var isPressed: Bool = false
+    
+    var body: some View {
+        Button(action: {
+            guard isEnabled else { return }
+            withAnimation(TVOSDesign.Animation.pressSpring) {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(TVOSDesign.Animation.pressSpring) {
+                    isPressed = false
+                }
+                action()
+            }
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .semibold))
+                Text(label)
+                    .font(.system(size: TVOSDesign.Typography.subheadline, weight: .medium))
+            }
+            .foregroundColor(isEnabled ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.tertiaryLabel)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(isFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(isFocused ? Color.white : Color.clear, lineWidth: 3)
+            )
+            .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
+            .shadow(
+                color: isFocused ? Color.white.opacity(0.4) : Color.clear,
+                radius: 15,
+                y: 5
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .disabled(!isEnabled)
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+        .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
+    }
+}
+
+struct TVOSNavIconButton: View {
+    let icon: String
+    let isEnabled: Bool
+    let action: () -> Void
+    
+    @FocusState private var isFocused: Bool
+    @State private var isPressed: Bool = false
+    
+    var body: some View {
+        Button(action: {
+            guard isEnabled else { return }
+            withAnimation(TVOSDesign.Animation.pressSpring) {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(TVOSDesign.Animation.pressSpring) {
+                    isPressed = false
+                }
+                action()
+            }
+        }) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(isEnabled ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                .frame(width: 54, height: 54)
+                .background(
+                    Circle()
+                        .fill(isFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
+                )
+                .overlay(
+                    Circle()
+                        .stroke(isFocused ? Color.white : Color.clear, lineWidth: 3)
+                )
+                .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
+                .shadow(
+                    color: isFocused ? Color.white.opacity(0.4) : Color.clear,
+                    radius: 12,
+                    y: 4
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .disabled(!isEnabled)
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+        .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
     }
 }
 
