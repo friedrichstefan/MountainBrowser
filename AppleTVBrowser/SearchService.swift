@@ -46,6 +46,7 @@ actor SearchService {
     // MARK: - Search Source
     enum SearchSource: String, CaseIterable {
         case duckduckgo = "DuckDuckGo"
+        case duckduckgoHTML = "DuckDuckGo HTML"
         case google = "Google"
     }
     
@@ -58,12 +59,17 @@ actor SearchService {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ]
         
-        // Such-URLs - Using DuckDuckGo Lite for simpler HTML structure
-        static let duckDuckGoURL = "https://lite.duckduckgo.com/lite/"
+        // Such-URLs
+        static let duckDuckGoLiteURL = "https://lite.duckduckgo.com/lite/"
+        static let duckDuckGoHTMLURL = "https://html.duckduckgo.com/html/"
         static let googleURL = "https://www.google.com/search"
         
         // Debugging
         static let enableDebugOutput = true
+        
+        // Retry settings
+        static let maxRetries = 2
+        static let retryDelay: UInt64 = 500_000_000 // 0.5 seconds in nanoseconds
     }
     
     // MARK: - Properties
@@ -97,15 +103,27 @@ actor SearchService {
         
         var lastError: Error?
         
-        // Versuche DuckDuckGo zuerst (stabiler)
+        // Versuche DuckDuckGo Lite zuerst
         do {
-            let results = try await searchDuckDuckGo(query: trimmedQuery)
+            let results = try await searchDuckDuckGoLite(query: trimmedQuery)
             if !results.isEmpty {
-                logger.info("✅ DuckDuckGo: \(results.count) Ergebnisse")
+                logger.info("✅ DuckDuckGo Lite: \(results.count) Ergebnisse")
                 return results
             }
         } catch {
-            logger.warning("⚠️ DuckDuckGo fehlgeschlagen: \(error.localizedDescription)")
+            logger.warning("⚠️ DuckDuckGo Lite fehlgeschlagen: \(error.localizedDescription)")
+            lastError = error
+        }
+        
+        // Fallback: DuckDuckGo HTML Version
+        do {
+            let results = try await searchDuckDuckGoHTML(query: trimmedQuery)
+            if !results.isEmpty {
+                logger.info("✅ DuckDuckGo HTML: \(results.count) Ergebnisse")
+                return results
+            }
+        } catch {
+            logger.warning("⚠️ DuckDuckGo HTML fehlgeschlagen: \(error.localizedDescription)")
             lastError = error
         }
         
@@ -126,15 +144,14 @@ actor SearchService {
         throw lastError ?? SearchError.allSourcesFailed
     }
     
-    // MARK: - DuckDuckGo Search
+    // MARK: - DuckDuckGo Lite Search
     
-    private func searchDuckDuckGo(query: String) async throws -> [SearchResult] {
+    private func searchDuckDuckGoLite(query: String) async throws -> [SearchResult] {
         guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
             throw SearchError.invalidQuery
         }
         
-        // Use DuckDuckGo Lite with GET request for simpler structure
-        guard let url = URL(string: "\(Configuration.duckDuckGoURL)?q=\(encodedQuery)") else {
+        guard let url = URL(string: "\(Configuration.duckDuckGoLiteURL)?q=\(encodedQuery)") else {
             throw SearchError.invalidURL
         }
         
@@ -143,16 +160,73 @@ actor SearchService {
         
         logger.debug("📤 DuckDuckGo Lite Request: \(url.absoluteString)")
         
+        // Retry logic for 202 status
+        for attempt in 0..<Configuration.maxRetries {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SearchError.networkError(NSError(domain: "HTTP", code: -1))
+            }
+            
+            logger.debug("📥 DuckDuckGo Lite Status: \(httpResponse.statusCode) (Attempt \(attempt + 1))")
+            
+            if httpResponse.statusCode == 202 {
+                // 202 means "Accepted" but results not ready yet - wait and retry
+                if attempt < Configuration.maxRetries - 1 {
+                    logger.debug("⏳ Status 202 - warte und versuche erneut...")
+                    try await Task.sleep(nanoseconds: Configuration.retryDelay)
+                    continue
+                } else {
+                    // After retries, try HTML version instead
+                    throw SearchError.noResults
+                }
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                throw SearchError.networkError(NSError(domain: "HTTP", code: httpResponse.statusCode))
+            }
+            
+            guard let html = String(data: data, encoding: .utf8) else {
+                throw SearchError.parsingError
+            }
+            
+            logger.debug("📄 HTML Länge: \(html.count) Zeichen")
+            
+            if Configuration.enableDebugOutput {
+                debugHTMLStructure(html: html, source: "DuckDuckGo Lite")
+            }
+            
+            return try await parseDuckDuckGoLiteResults(html: html)
+        }
+        
+        throw SearchError.noResults
+    }
+    
+    // MARK: - DuckDuckGo HTML Search (Fallback)
+    
+    private func searchDuckDuckGoHTML(query: String) async throws -> [SearchResult] {
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw SearchError.invalidQuery
+        }
+        
+        guard let url = URL(string: "\(Configuration.duckDuckGoHTMLURL)?q=\(encodedQuery)") else {
+            throw SearchError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        
+        logger.debug("📤 DuckDuckGo HTML Request: \(url.absoluteString)")
+        
         let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SearchError.networkError(NSError(domain: "HTTP", code: -1))
         }
         
-        logger.debug("📥 DuckDuckGo Status: \(httpResponse.statusCode)")
+        logger.debug("📥 DuckDuckGo HTML Status: \(httpResponse.statusCode)")
         
-        // DuckDuckGo Lite kann auch 202 (Accepted) zurückgeben
-        guard httpResponse.statusCode == 200 || httpResponse.statusCode == 202 else {
+        guard httpResponse.statusCode == 200 else {
             throw SearchError.networkError(NSError(domain: "HTTP", code: httpResponse.statusCode))
         }
         
@@ -162,20 +236,18 @@ actor SearchService {
         
         logger.debug("📄 HTML Länge: \(html.count) Zeichen")
         
-        // Debug: Show HTML structure around search results
         if Configuration.enableDebugOutput {
-            debugHTMLStructure(html: html, source: "DuckDuckGo Lite")
+            debugHTMLStructure(html: html, source: "DuckDuckGo HTML")
         }
         
-        return try await parseDuckDuckGoResults(html: html)
+        return try await parseDuckDuckGoHTMLResults(html: html)
     }
 
-    private func parseDuckDuckGoResults(html: String) async throws -> [SearchResult] {
+    private func parseDuckDuckGoLiteResults(html: String) async throws -> [SearchResult] {
         var results: [SearchResult] = []
         var seenURLs = Set<String>()
 
-        // DuckDuckGo Lite - NEW PATTERN for current HTML structure
-        // Matches: <a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A...">Title</a>
+        // DuckDuckGo Lite - Pattern for result-link class
         let pattern = "<a\\s+rel=\"nofollow\"\\s+href=\"([^\"]+)\"[^>]*class=['\"]result-link['\"]>([^<]+)</a>"
         
         do {
@@ -201,16 +273,12 @@ actor SearchService {
                 }
                 
                 // Clean up URL - handle DuckDuckGo redirects
-                // Format: //duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com&rut=...
                 if urlString.contains("duckduckgo.com/l/?uddg=") {
-                    // Extract the encoded URL from uddg parameter
                     if let uddgRange = urlString.range(of: "uddg=") {
                         var encodedURL = String(urlString[uddgRange.upperBound...])
-                        // Remove everything after the first & (tracking parameters)
                         if let ampRange = encodedURL.range(of: "&") {
                             encodedURL = String(encodedURL[..<ampRange.lowerBound])
                         }
-                        // Decode the URL
                         if let decodedURL = encodedURL.removingPercentEncoding,
                            decodedURL.hasPrefix("http") {
                             urlString = decodedURL
@@ -228,10 +296,9 @@ actor SearchService {
                     continue
                 }
                 
-                // More lenient filtering
                 guard !title.isEmpty,
-                      title.count > 2, // Allow shorter titles
-                      !title.contains("more info"), // Skip "more info" links
+                      title.count > 2,
+                      !title.contains("more info"),
                       isValidExternalURL(urlString),
                       !seenURLs.contains(urlString) else {
                     continue
@@ -253,7 +320,91 @@ actor SearchService {
             throw SearchError.parsingError
         }
         
-        logger.debug("🔎 DuckDuckGo geparst: \(results.count) Ergebnisse")
+        logger.debug("🔎 DuckDuckGo Lite geparst: \(results.count) Ergebnisse")
+        
+        if results.isEmpty {
+            throw SearchError.noResults
+        }
+        
+        return results
+    }
+    
+    private func parseDuckDuckGoHTMLResults(html: String) async throws -> [SearchResult] {
+        var results: [SearchResult] = []
+        var seenURLs = Set<String>()
+
+        // DuckDuckGo HTML version has different structure
+        // Pattern 1: Links with result__a class
+        let patterns = [
+            "<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>([^<]+)</a>",
+            "<a[^>]*href=\"([^\"]+)\"[^>]*class=\"result__a\"[^>]*>([^<]+)</a>",
+            "<a[^>]*class=['\"]result-link['\"][^>]*href=\"([^\"]+)\"[^>]*>([^<]+)</a>"
+        ]
+        
+        for pattern in patterns {
+            do {
+                let regex = try NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
+                let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
+                let matches = regex.matches(in: html, options: [], range: nsRange)
+                
+                logger.debug("🔍 DuckDuckGo HTML Pattern: \(matches.count) matches")
+                
+                for match in matches {
+                    guard match.numberOfRanges >= 3,
+                          let urlRange = Range(match.range(at: 1), in: html),
+                          let titleRange = Range(match.range(at: 2), in: html) else {
+                        continue
+                    }
+                    
+                    var urlString = String(html[urlRange])
+                    let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
+                    
+                    // Handle DuckDuckGo redirect URLs
+                    if urlString.contains("//duckduckgo.com/l/?") {
+                        if let uddgRange = urlString.range(of: "uddg=") {
+                            var encodedURL = String(urlString[uddgRange.upperBound...])
+                            if let ampRange = encodedURL.range(of: "&") {
+                                encodedURL = String(encodedURL[..<ampRange.lowerBound])
+                            }
+                            if let decodedURL = encodedURL.removingPercentEncoding {
+                                urlString = decodedURL
+                            }
+                        }
+                    }
+                    
+                    // Ensure URL starts with http
+                    if !urlString.hasPrefix("http") {
+                        continue
+                    }
+                    
+                    guard !title.isEmpty,
+                          title.count > 2,
+                          isValidExternalURL(urlString),
+                          !seenURLs.contains(urlString) else {
+                        continue
+                    }
+                    
+                    seenURLs.insert(urlString)
+                    
+                    await MainActor.run {
+                        results.append(SearchResult(title: title, url: urlString, description: ""))
+                    }
+                    
+                    if results.count >= Configuration.maxResults {
+                        break
+                    }
+                }
+                
+                if !results.isEmpty {
+                    break
+                }
+                
+            } catch {
+                logger.warning("⚠️ Pattern Fehler: \(error)")
+            }
+        }
+        
+        logger.debug("🔎 DuckDuckGo HTML geparst: \(results.count) Ergebnisse")
         
         if results.isEmpty {
             throw SearchError.noResults
@@ -302,13 +453,9 @@ actor SearchService {
 
         // Try multiple patterns for Google search results
         let patterns = [
-            // Current Google pattern
             "<a href=\"/url\\?q=([^&\"]+)[^\"]*\"[^>]*><h3[^>]*>(.*?)</h3></a>",
-            // Alternative pattern
             "<a[^>]*href=\"/url\\?q=([^&\"]+)[^\"]*\"[^>]*>.*?<h3[^>]*>(.*?)</h3>",
-            // Fallback pattern for direct links
             "<a[^>]*href=\"(https?://[^\"]+)\"[^>]*><h3[^>]*>(.*?)</h3></a>",
-            // Simple pattern for any external link with title
             "<h3[^>]*><a[^>]*href=\"/url\\?q=([^&\"]+)[^\"]*\"[^>]*>(.*?)</a></h3>"
         ]
         
@@ -330,12 +477,10 @@ actor SearchService {
                     var urlString = String(html[urlRange])
                     let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
                     
-                    // Clean up URL
                     if let decodedURL = urlString.removingPercentEncoding {
                         urlString = decodedURL
                     }
                     
-                    // Remove Google tracking parameters
                     if let range = urlString.range(of: "&sa=") {
                         urlString = String(urlString[..<range.lowerBound])
                     }
@@ -380,16 +525,14 @@ actor SearchService {
             return false
         }
         
-        // Filtere bekannte Domains von Suchmaschinen und deren CDNs
         let blockedDomains = [
             "google.com", "google.de", "gstatic.com", "googleapis.com",
-            "googleusercontent.com", "duckduckgo.com", "duck.co", "youtube.com"
+            "googleusercontent.com", "duckduckgo.com", "duck.co"
         ]
         
         let lowercasedHost = host.lowercased()
         
         for domain in blockedDomains {
-            // Blockiere die Domain selbst oder Subdomains davon (z.B. ads.google.com)
             if lowercasedHost == domain || lowercasedHost.hasSuffix(".\(domain)") {
                 return false
             }
@@ -407,19 +550,9 @@ actor SearchService {
             .replacingOccurrences(of: "&#39;", with: "'")
     }
     
-    private func extractURLFromDuckDuckGoRedirect(_ redirectString: String) -> String? {
-        // Extract URL from DuckDuckGo redirect like "/l/?uddg=https%3A//example.com"
-        if let range = redirectString.range(of: "uddg=") {
-            let urlPart = String(redirectString[range.upperBound...])
-            return urlPart.removingPercentEncoding
-        }
-        return nil
-    }
-    
     private func debugHTMLStructure(html: String, source: String) {
         logger.debug("🔍 HTML Debug für \(source):")
         
-        // Look for any <a> tags to understand the structure
         do {
             let linkRegex = try NSRegularExpression(pattern: "<a[^>]*href[^>]*>[^<]*</a>", options: .caseInsensitive)
             let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
@@ -427,7 +560,6 @@ actor SearchService {
             
             logger.debug("📋 Gefundene Links: \(matches.count)")
             
-            // Show first few links for debugging
             for (index, match) in matches.prefix(5).enumerated() {
                 if let range = Range(match.range, in: html) {
                     let linkHTML = String(html[range])

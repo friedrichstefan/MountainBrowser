@@ -94,5 +94,33 @@ struct TVOSInputConfiguration {
             // Configure tvOS-specific input settings
             UserDefaults.standard.set(true, forKey: "DisableKeyboardCandidates")
         }
+        
+        // Setze globale UIKit Tint-Farbe auf Weiß für System-Tastatur und andere UI-Elemente
+        configureSystemAppearance()
+    }
+    
+    /// Konfiguriert die globale System-Appearance für UIKit-Elemente (inkl. Tastatur)
+    static func configureSystemAppearance() {
+        // Globale Tint-Farbe für alle UIKit-Views auf Weiß setzen
+        UIView.appearance().tintColor = .white
+        
+        // UITextField Appearance - Tint und Cursor-Farbe
+        UITextField.appearance().tintColor = .white
+        
+        // UINavigationBar Appearance
+        UINavigationBar.appearance().tintColor = .white
+        
+        // UITabBar Appearance
+        UITabBar.appearance().tintColor = .white
+        
+        // UISearchBar Appearance
+        UISearchBar.appearance().tintColor = .white
+        
+        // UIWindow Appearance
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            windowScene.windows.forEach { window in
+                window.tintColor = .white
+            }
+        }
     }
 }

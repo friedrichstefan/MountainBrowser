@@ -22,6 +22,13 @@ struct FullscreenWebView: View {
     @State private var canGoForward: Bool = false
     @State private var pageTitle: String = ""
     @State private var showNavigationBar: Bool = true
+    @State private var showHelpHint: Bool = true
+    
+    // Animationswerte für sanftes Verschwinden
+    @State private var helpHintOpacity: Double = 1.0
+    @State private var helpHintOffset: CGFloat = 0
+    @State private var helpHintScale: CGFloat = 1.0
+    @State private var helpHintBlur: CGFloat = 0
     
     // Shared WebView Controller
     @StateObject private var webViewController = WebViewScrollController()
@@ -41,8 +48,6 @@ struct FullscreenWebView: View {
                 showNavigationBar: $showNavigationBar,
                 scrollController: webViewController,
                 onMenuPress: {
-                    // Menü-Button: Wenn wir im WebView zurück gehen können, gehe zurück
-                    // Sonst wird die View automatisch durch fullScreenCover geschlossen
                     if canGoBack {
                         print("🔙 WebView goBack (canGoBack=true)")
                         webViewController.goBack()
@@ -52,7 +57,7 @@ struct FullscreenWebView: View {
                     }
                 },
                 onPlayPause: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8, blendDuration: 0.3)) {
                         showNavigationBar.toggle()
                     }
                 }
@@ -63,19 +68,29 @@ struct FullscreenWebView: View {
             // Navigationsleiste oben
             if showNavigationBar {
                 navigationBar
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity).animation(.spring(response: 0.6, dampingFraction: 0.8)),
+                            removal: .move(edge: .top).combined(with: .opacity).animation(.easeOut(duration: 0.4))
+                        )
+                    )
             }
             
             // Loading indicator
             if isLoading {
                 loadingIndicator
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)).animation(.spring(response: 0.4, dampingFraction: 0.7)))
             }
             
-            // Hilfe-Hinweis
-            if showNavigationBar {
+            // Hilfe-Hinweis mit weichem Verschwinde-Effekt
+            if showNavigationBar && showHelpHint {
                 VStack {
                     Spacer()
                     helpHint
+                        .opacity(helpHintOpacity)
+                        .offset(y: helpHintOffset)
+                        .scaleEffect(helpHintScale)
+                        .blur(radius: helpHintBlur)
                         .padding(.bottom, 40)
                 }
             }
@@ -83,85 +98,87 @@ struct FullscreenWebView: View {
         .onAppear {
             urlString = url
             pageTitle = title.isEmpty ? url : title
+            
+            // Sanftes Verschwinden des Hilfe-Hinweises starten
+            startSmoothHelpHintFadeOut()
         }
-        .animation(.easeInOut(duration: 0.3), value: showNavigationBar)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showNavigationBar)
+    }
+    
+    // MARK: - Smooth Help Hint Fade Out Animation
+    
+    private func startSmoothHelpHintFadeOut() {
+        // Nach 6 Sekunden: Eine durchgehende, nahtlose Animation
+        // Erst langsam dimmen, dann beschleunigt zusammenziehen
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+            // Alles in einer Animation mit custom Timing Curve
+            // Die Kurve startet langsam (Dimmen) und beschleunigt dann (Zusammenziehen)
+            withAnimation(.timingCurve(0.4, 0.0, 0.2, 1.0, duration: 3.5)) {
+                helpHintOpacity = 0
+                helpHintScale = 0.3
+                helpHintOffset = 50
+                helpHintBlur = 12
+            }
+            
+            // View entfernen nach Animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.7) {
+                showHelpHint = false
+            }
+        }
     }
     
     // MARK: - Navigation Bar
     
     private var navigationBar: some View {
-        HStack(spacing: 20) {
-            Button(action: {
+        HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            // Zurück-Button mit tvOS Focus Style
+            TVOSNavButton(
+                icon: "chevron.left",
+                label: "Zurück",
+                isEnabled: true
+            ) {
                 dismiss()
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
-                    Text("Zurück")
-                        .font(.system(size: 20, weight: .medium))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.2))
-                )
             }
-            .buttonStyle(PlainButtonStyle())
             
-            VStack(alignment: .leading, spacing: 4) {
-                Text(pageTitle.isEmpty ? "Laden..." : pageTitle)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                
-                Text(urlString)
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(.gray)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Safari-Style URL Bar (zentriert)
+            SafariURLBar(
+                urlString: urlString,
+                pageTitle: pageTitle.isEmpty ? "Laden..." : pageTitle
+            )
+            .frame(maxWidth: .infinity)
             
+            // Navigation Controls
             HStack(spacing: 16) {
-                Button(action: { webViewController.goBack() }) {
-                    Image(systemName: "arrow.left")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(canGoBack ? .white : .gray)
-                        .padding(12)
-                        .background(Circle().fill(Color.white.opacity(canGoBack ? 0.2 : 0.1)))
+                TVOSNavIconButton(
+                    icon: "arrow.left",
+                    isEnabled: canGoBack
+                ) {
+                    webViewController.goBack()
                 }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(!canGoBack)
                 
-                Button(action: { webViewController.goForward() }) {
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(canGoForward ? .white : .gray)
-                        .padding(12)
-                        .background(Circle().fill(Color.white.opacity(canGoForward ? 0.2 : 0.1)))
+                TVOSNavIconButton(
+                    icon: "arrow.right",
+                    isEnabled: canGoForward
+                ) {
+                    webViewController.goForward()
                 }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(!canGoForward)
                 
-                Button(action: { webViewController.reload() }) {
-                    Image(systemName: isLoading ? "xmark" : "arrow.clockwise")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(12)
-                        .background(Circle().fill(Color.white.opacity(0.2)))
+                TVOSNavIconButton(
+                    icon: isLoading ? "xmark" : "arrow.clockwise",
+                    isEnabled: true
+                ) {
+                    webViewController.reload()
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(.horizontal, 40)
-        .padding(.vertical, 20)
+        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
+        .padding(.vertical, 24)
         .background(
             LinearGradient(
                 gradient: Gradient(colors: [
-                    Color.black.opacity(0.95),
-                    Color.black.opacity(0.8),
-                    Color.black.opacity(0.0)
+                    TVOSDesign.Colors.background.opacity(0.98),
+                    TVOSDesign.Colors.background.opacity(0.9),
+                    TVOSDesign.Colors.background.opacity(0.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
@@ -171,48 +188,182 @@ struct FullscreenWebView: View {
     }
     
     private var helpHint: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "arrow.up.arrow.down")
-                .font(.system(size: 20))
-            Text("Pfeile/Wischen: Scrollen")
-                .font(.system(size: 18, weight: .medium))
+        HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 22))
+                Text("Pfeile/Wischen: Scrollen")
+                    .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
+            }
             
             Spacer()
             
-            Image(systemName: "playpause")
-                .font(.system(size: 20))
-            Text("Play/Pause: Leiste ein/aus")
-                .font(.system(size: 18, weight: .medium))
+            HStack(spacing: 10) {
+                Image(systemName: "playpause.fill")
+                    .font(.system(size: 22))
+                Text("Play/Pause: Leiste ein/aus")
+                    .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
+            }
         }
-        .foregroundColor(.white.opacity(0.7))
-        .padding(.horizontal, 30)
-        .padding(.vertical, 16)
+        .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+        .padding(.horizontal, TVOSDesign.Spacing.cardSpacing)
+        .padding(.vertical, 20)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.8))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(TVOSDesign.Colors.secondaryBackground.opacity(0.95))
+                .shadow(color: Color.black.opacity(0.3), radius: 20, y: 10)
         )
-        .padding(.horizontal, 40)
+        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
     }
     
     private var loadingIndicator: some View {
         VStack {
             Spacer()
-            HStack(spacing: 16) {
+            HStack(spacing: 20) {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(1.5)
+                    .scaleEffect(2.0)
                 Text("Laden...")
-                    .foregroundColor(.white)
-                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                    .font(.system(size: TVOSDesign.Typography.callout, weight: .medium))
             }
-            .padding(.horizontal, 30)
-            .padding(.vertical, 20)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 28)
             .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.black.opacity(0.8))
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .fill(TVOSDesign.Colors.secondaryBackground.opacity(0.95))
+                    .shadow(color: Color.black.opacity(0.4), radius: 25, y: 10)
             )
             Spacer()
         }
+    }
+}
+
+// MARK: - Smooth Animation Constants
+
+private enum SmoothAnimation {
+    // Weiche, natürliche Spring-Animationen
+    static let focusSpring = Animation.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2)
+    static let pressSpring = Animation.spring(response: 0.25, dampingFraction: 0.65, blendDuration: 0.1)
+    static let hoverSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0.15)
+    
+    // Geschmeidige Ease-Kurven
+    static let smoothEase = Animation.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.4)
+    static let gentleEase = Animation.timingCurve(0.4, 0.0, 0.2, 1.0, duration: 0.5)
+}
+
+// MARK: - tvOS Navigation Button Components
+
+struct TVOSNavButton: View {
+    let icon: String
+    let label: String
+    let isEnabled: Bool
+    let action: () -> Void
+    
+    @FocusState private var isFocused: Bool
+    @State private var isPressed: Bool = false
+    @State private var hoverScale: CGFloat = 1.0
+    
+    var body: some View {
+        Button(action: {
+            guard isEnabled else { return }
+            
+            // Geschmeidigere Press-Animation
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+                isPressed = true
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    isPressed = false
+                }
+                action()
+            }
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .semibold))
+                Text(label)
+                    .font(.system(size: TVOSDesign.Typography.subheadline, weight: .medium))
+            }
+            .foregroundColor(isEnabled ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.tertiaryLabel)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(isFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(isFocused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2.5)
+            )
+            .scaleEffect(isPressed ? 0.94 : (isFocused ? 1.06 : hoverScale))
+            .shadow(
+                color: isFocused ? Color.white.opacity(0.35) : Color.black.opacity(0.2),
+                radius: isFocused ? 20 : 8,
+                y: isFocused ? 8 : 4
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .disabled(!isEnabled)
+        .onChange(of: isFocused) { _, newValue in
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                hoverScale = newValue ? 1.0 : 1.0
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2), value: isFocused)
+        .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
+    }
+}
+
+struct TVOSNavIconButton: View {
+    let icon: String
+    let isEnabled: Bool
+    let action: () -> Void
+    
+    @FocusState private var isFocused: Bool
+    @State private var isPressed: Bool = false
+    
+    var body: some View {
+        Button(action: {
+            guard isEnabled else { return }
+            
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+                isPressed = true
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    isPressed = false
+                }
+                action()
+            }
+        }) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(isEnabled ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                .frame(width: 54, height: 54)
+                .background(
+                    Circle()
+                        .fill(isFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
+                )
+                .overlay(
+                    Circle()
+                        .stroke(isFocused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2.5)
+                )
+                .scaleEffect(isPressed ? 0.92 : (isFocused ? 1.08 : 1.0))
+                .shadow(
+                    color: isFocused ? Color.white.opacity(0.35) : Color.black.opacity(0.15),
+                    radius: isFocused ? 16 : 6,
+                    y: isFocused ? 6 : 3
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .disabled(!isEnabled)
+        .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2), value: isFocused)
+        .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
     }
 }
 
@@ -222,8 +373,36 @@ class WebViewScrollController: ObservableObject {
     weak var webView: UIView?
     weak var hostController: WebViewHostController?
     
+    // Smooth scroll mit CSS behavior und momentum
+    func smoothScroll(by offset: CGFloat) {
+        DispatchQueue.main.async { [weak self] in
+            guard let webView = self?.webView else {
+                print("❌ WebView nicht verfügbar für Scroll")
+                return
+            }
+            
+            let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+            if webView.responds(to: jsSelector) {
+                // Smooth scroll mit CSS behavior
+                let scrollJS = """
+                    const currentY = window.pageYOffset;
+                    const targetY = currentY + \(Int(offset));
+                    window.scrollTo({
+                        top: targetY,
+                        behavior: 'smooth'
+                    });
+                    true;
+                """
+                _ = webView.perform(jsSelector, with: scrollJS)
+                print("🌊 Smooth Scroll: \(Int(offset))px")
+            } else {
+                print("❌ JavaScript nicht verfügbar")
+            }
+        }
+    }
+    
+    // Legacy direktes Scrollen für sehr kleine Adjustments
     func scroll(by offset: CGFloat) {
-        // JavaScript-basiertes Scrollen
         DispatchQueue.main.async { [weak self] in
             guard let webView = self?.webView else {
                 print("❌ WebView nicht verfügbar für Scroll")
@@ -432,21 +611,21 @@ class WebViewHostController: UIViewController {
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
         
-        // Skip Forward = Scroll Down
+        // Skip Forward = Scroll Down (optimiert für smoothere Bewegung)
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
-            print("⏩ Skip Forward -> Scroll Down")
-            self?.scrollController?.scroll(by: 300)
+            print("⏩ Skip Forward -> Smooth Scroll Down")
+            self?.scrollController?.smoothScroll(by: 180)
             return .success
         }
         
-        // Skip Backward = Scroll Up
+        // Skip Backward = Scroll Up (optimiert für smoothere Bewegung)
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
-            print("⏪ Skip Backward -> Scroll Up")
-            self?.scrollController?.scroll(by: -300)
+            print("⏪ Skip Backward -> Smooth Scroll Up")
+            self?.scrollController?.smoothScroll(by: -180)
             return .success
         }
         
@@ -538,6 +717,7 @@ class WebViewHostController: UIViewController {
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
         
         switch gesture.state {
         case .began:
@@ -548,11 +728,30 @@ class WebViewHostController: UIViewController {
         case .changed:
             let deltaY = translation.y - lastPanY
             lastPanY = translation.y
-            let scrollAmount = -deltaY * 15.0
-            scrollController?.scroll(by: scrollAmount)
             
-        case .ended, .cancelled:
-            print("🖐️ Pan ended")
+            // Optimierter Multiplikator für smoothere Touchpad-Erfahrung
+            let scrollAmount = -deltaY * 8.5
+            
+            // Verwende smooth scroll für kleinere Bewegungen
+            if abs(scrollAmount) < 50 {
+                scrollController?.smoothScroll(by: scrollAmount)
+            } else {
+                scrollController?.scroll(by: scrollAmount)
+            }
+            
+        case .ended:
+            print("🖐️ Pan ended - adding momentum")
+            isPanning = false
+            lastPanY = 0
+            
+            // Momentum-Effekt basierend auf Geschwindigkeit
+            let momentumY = -velocity.y * 0.3
+            if abs(momentumY) > 20 {
+                scrollController?.smoothScroll(by: min(max(momentumY, -200), 200))
+            }
+            
+        case .cancelled:
+            print("🖐️ Pan cancelled")
             isPanning = false
             lastPanY = 0
             
@@ -588,12 +787,12 @@ class WebViewHostController: UIViewController {
                 
             case .upArrow:
                 print("⬆️ Up Arrow gedrückt")
-                startContinuousScroll(direction: -200)
+                startSmoothContinuousScroll(direction: -120)
                 handled = true
                 
             case .downArrow:
                 print("⬇️ Down Arrow gedrückt")
-                startContinuousScroll(direction: 200)
+                startSmoothContinuousScroll(direction: 120)
                 handled = true
                 
             case .playPause:
@@ -628,16 +827,19 @@ class WebViewHostController: UIViewController {
         super.pressesCancelled(presses, with: event)
     }
     
-    private func startContinuousScroll(direction: CGFloat) {
+    // Neue smoother continuous scroll Implementierung
+    private func startSmoothContinuousScroll(direction: CGFloat) {
         currentScrollDirection = direction
-        // Sofort scrollen
-        scrollController?.scroll(by: direction)
         
-        // Timer für kontinuierliches Scrollen
+        // Erster Scroll mit smooth CSS behavior
+        scrollController?.smoothScroll(by: direction)
+        
+        // Timer mit längerem Intervall für smoothere Bewegung
         scrollTimer?.invalidate()
-        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            self.scrollController?.scroll(by: self.currentScrollDirection)
+            // Verwende smooth scroll für kontinuierliche Bewegung
+            self.scrollController?.smoothScroll(by: self.currentScrollDirection * 0.8)
         }
     }
     
@@ -722,7 +924,167 @@ class WebViewHostController: UIViewController {
     }
 }
 
+// MARK: - Safari-Style URL Bar Component
+
+struct SafariURLBar: View {
+    let urlString: String
+    let pageTitle: String
+    
+    @FocusState private var isFocused: Bool
+    @State private var showTitle: Bool = false
+    @State private var contentOpacity: Double = 1.0
+    
+    private var isSecure: Bool {
+        urlString.hasPrefix("https://")
+    }
+    
+    private var displayURL: String {
+        extractDomain(from: urlString)
+    }
+    
+    var body: some View {
+        Button(action: {
+            // Sanfter Crossfade zwischen URL und Titel
+            withAnimation(.easeInOut(duration: 0.25)) {
+                contentOpacity = 0
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                showTitle.toggle()
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    contentOpacity = 1.0
+                }
+            }
+        }) {
+            HStack(spacing: 12) {
+                // Sicherheits-Icon (grün für HTTPS) mit sanfter Animation
+                Image(systemName: isSecure ? "lock.fill" : "lock.slash")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(isSecure ? TVOSDesign.Colors.systemGreen : TVOSDesign.Colors.tertiaryLabel)
+                    .animation(.easeInOut(duration: 0.3), value: isSecure)
+                
+                // URL oder Titel (umschaltbar) mit Crossfade
+                Text(showTitle ? pageTitle : displayURL)
+                    .font(.system(size: TVOSDesign.Typography.subheadline, weight: .medium))
+                    .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .opacity(contentOpacity)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 16)
+            .frame(minHeight: TVOSDesign.Spacing.minTouchTarget)
+            .background(
+                // Safari-Style Kapsel mit sanftem Übergang
+                Capsule()
+                    .fill(
+                        isFocused 
+                        ? TVOSDesign.Colors.focusedCardBackground
+                        : Color.white.opacity(0.15)
+                    )
+            )
+            .overlay(
+                // Focus-Rahmen (reduziert)
+                Capsule()
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.8) : Color.clear,
+                        lineWidth: 2
+                    )
+                    .padding(1)
+            )
+            .scaleEffect(isFocused ? 1.05 : 1.0)
+            .shadow(
+                color: isFocused ? Color.white.opacity(0.3) : Color.black.opacity(0.2),
+                radius: isFocused ? 12 : 8,
+                y: isFocused ? 6 : 4
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2), value: isFocused)
+        .onAppear {
+            // Sanfter automatischer Wechsel zum Titel
+            if !pageTitle.isEmpty && pageTitle != "Laden..." {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        contentOpacity = 0
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        showTitle = true
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            contentOpacity = 1.0
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: pageTitle) { _, newTitle in
+            // Wenn Titel sich ändert (z.B. nach Laden), sanft aktualisieren
+            if !newTitle.isEmpty && newTitle != "Laden..." && !showTitle {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        contentOpacity = 0
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        showTitle = true
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            contentOpacity = 1.0
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    /// Extrahiert Domain aus URL String (ohne www. und Protokoll)
+    private func extractDomain(from urlString: String) -> String {
+        guard let url = URL(string: urlString) else {
+            return urlString
+        }
+        
+        var host = url.host ?? urlString
+        
+        // Entferne www. Präfix
+        if host.hasPrefix("www.") {
+            host = String(host.dropFirst(4))
+        }
+        
+        return host
+    }
+}
+
 #Preview {
+    ZStack {
+        TVOSDesign.Colors.background.ignoresSafeArea()
+        
+        VStack(spacing: 40) {
+            // HTTPS Beispiel
+            SafariURLBar(
+                urlString: "https://www.apple.com/de/tv-home/",
+                pageTitle: "Apple TV - Apple (DE)"
+            )
+            
+            // HTTP Beispiel (unsicher)
+            SafariURLBar(
+                urlString: "http://example.com/test",
+                pageTitle: "Test Page"
+            )
+            
+            // Laden-Status
+            SafariURLBar(
+                urlString: "https://www.google.com",
+                pageTitle: "Laden..."
+            )
+        }
+        .padding()
+    }
+}
+
+#Preview("Original WebView") {
     FullscreenWebView(
         url: "https://www.example.com",
         title: "Example",
