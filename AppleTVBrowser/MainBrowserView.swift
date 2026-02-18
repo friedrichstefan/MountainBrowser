@@ -12,7 +12,6 @@ struct MainBrowserView: View {
     @StateObject private var searchViewModel = SearchViewModel()
     @Environment(\.modelContext) private var modelContext
     
-    @State private var showWebView: Bool = false
     @State private var selectedResult: SearchResult?
     
     var body: some View {
@@ -41,20 +40,20 @@ struct MainBrowserView: View {
                 // Hauptinhaltsbereich
                 contentView
             }
-            
-            // Vollbild-WebView-Overlay
-            if showWebView, let result = selectedResult {
-                FullscreenWebView(
-                    url: result.url,
-                    title: result.title,
-                    isPresented: $showWebView
-                )
-                .transition(.move(edge: .trailing))
-                .zIndex(2)
-            }
         }
         .onAppear {
             searchViewModel.modelContext = modelContext
+        }
+        // fullScreenCover mit item: für stabile Präsentation
+        .fullScreenCover(item: $selectedResult) { result in
+            FullscreenWebView(
+                url: result.url,
+                title: result.title,
+                isPresented: .init(
+                    get: { selectedResult != nil },
+                    set: { if !$0 { selectedResult = nil } }
+                )
+            )
         }
     }
     
@@ -94,10 +93,8 @@ struct MainBrowserView: View {
         SearchResultGridView(
             results: searchViewModel.searchResults,
             onSelect: { result in
+                print("📱 Suchergebnis ausgewählt: \(result.title)")
                 selectedResult = result
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    showWebView = true
-                }
             }
         )
     }

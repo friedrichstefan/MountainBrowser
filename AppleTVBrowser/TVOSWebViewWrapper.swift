@@ -2,8 +2,7 @@
 //  TVOSWebViewWrapper.swift
 //  AppleTVBrowser
 //
-//  UIWebView Wrapper für tvOS - NO WebKit!
-//  Basierend auf der Objective-C Referenz-Implementation
+//  UIWebView Wrapper für tvOS - KEIN WebKit (nicht verfügbar auf tvOS)!
 //
 
 import SwiftUI
@@ -11,26 +10,21 @@ import UIKit
 import Combine
 
 /// UIViewControllerRepresentable Wrapper für UIWebView auf tvOS
-/// Verwendet UIViewController um Siri Remote-Eingaben korrekt zu empfangen
 struct TVOSWebViewWrapper: UIViewControllerRepresentable {
     
-    // MARK: - Bindings
     @Binding var urlString: String
     @Binding var isLoading: Bool
     @Binding var canGoBack: Bool
     @Binding var canGoForward: Bool
     @Binding var pageTitle: String
     
-    // MARK: - Properties
     var onNavigationChange: ((String) -> Void)?
     var onPan: ((CGPoint) -> Void)?
     var onTap: (() -> Void)?
     var onDoubleTap: (() -> Void)?
+    var onMenuPress: (() -> Void)?
     
-    // WebViewController-Referenz für externe Steuerung
-    var webViewController: TVOSWebViewController?
-    
-    // MARK: - UIViewControllerRepresentable
+    @ObservedObject var webViewController: TVOSWebViewController
     
     func makeUIViewController(context: Context) -> TVOSWebViewHostController {
         let controller = TVOSWebViewHostController()
@@ -38,39 +32,33 @@ struct TVOSWebViewWrapper: UIViewControllerRepresentable {
         controller.onPan = onPan
         controller.onTap = onTap
         controller.onDoubleTap = onDoubleTap
-        
-        // Übergebe externe WebViewController-Referenz
-        DispatchQueue.main.async {
-            self.webViewController?.webView = controller.webView
-            print("✅ WebView-Referenz an Controller übergeben")
-        }
+        controller.onMenuPress = onMenuPress
+        controller.externalWebViewController = webViewController
         
         return controller
     }
     
     func updateUIViewController(_ uiViewController: TVOSWebViewHostController, context: Context) {
-        // Aktualisiere Callbacks
         uiViewController.onPan = onPan
         uiViewController.onTap = onTap
         uiViewController.onDoubleTap = onDoubleTap
+        uiViewController.onMenuPress = onMenuPress
         
-        // Lade neue URL wenn sich urlString geändert hat
+        if let webView = uiViewController.webView {
+            if webViewController.webView !== webView {
+                webViewController.webView = webView
+            }
+        }
+        
         if !urlString.isEmpty && urlString != context.coordinator.currentURL {
             context.coordinator.currentURL = urlString
             uiViewController.loadURL(urlString)
-        }
-        
-        // Aktualisiere WebView-Referenz falls noch nicht gesetzt
-        if webViewController?.webView == nil {
-            webViewController?.webView = uiViewController.webView
         }
     }
     
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
-    // MARK: - Coordinator
     
     class Coordinator: NSObject {
         var parent: TVOSWebViewWrapper
@@ -80,7 +68,6 @@ struct TVOSWebViewWrapper: UIViewControllerRepresentable {
             self.parent = parent
         }
         
-        // Diese Methoden werden vom TVOSWebViewHostController aufgerufen
         func webViewDidStartLoad() {
             DispatchQueue.main.async {
                 self.parent.isLoading = true
@@ -95,306 +82,216 @@ struct TVOSWebViewWrapper: UIViewControllerRepresentable {
                 self.parent.pageTitle = pageTitle
                 self.parent.urlString = currentURL
                 self.parent.onNavigationChange?(currentURL)
-                self.saveToHistory(url: currentURL, title: pageTitle)
             }
         }
         
         func webViewDidFail(error: Error) {
             DispatchQueue.main.async {
                 self.parent.isLoading = false
-                print("❌ WebView Fehler: \(error.localizedDescription)")
             }
-        }
-        
-        // MARK: - Helper Methods
-        
-        private func saveToHistory(url: String, title: String) {
-            let historyItem = [url, title]
-            var history = UserDefaults.standard.array(forKey: "HISTORY") as? [[String]] ?? []
-            
-            // Entferne Duplikate
-            history.removeAll { $0[0] == url }
-            
-            // Füge neues Item am Anfang hinzu
-            history.insert(historyItem, at: 0)
-            
-            // Begrenze auf 100 Einträge
-            if history.count > 100 {
-                history = Array(history.prefix(100))
-            }
-            
-            UserDefaults.standard.set(history, forKey: "HISTORY")
         }
     }
-    
 }
 
 // MARK: - TVOSWebViewHostController
 
-/// UIViewController der Siri Remote-Eingaben korrekt empfängt
 class TVOSWebViewHostController: UIViewController {
     
     var webView: UIView?
     var coordinator: TVOSWebViewWrapper.Coordinator?
+    weak var externalWebViewController: TVOSWebViewController?
     
-    // Callbacks
     var onPan: ((CGPoint) -> Void)?
     var onTap: (() -> Void)?
     var onDoubleTap: (() -> Void)?
+    var onMenuPress: (() -> Void)?
     
-    // Touch-Tracking für Swipe-Gesten auf der Siri Remote
-    private var touchStartLocation: CGPoint = .zero
-    private var lastTouchLocation: CGPoint = .zero
-    private var lastTapTime: Date = Date.distantPast
-    private let doubleTapInterval: TimeInterval = 0.3
-    private var hasMoved: Bool = false
-    
-    // Kontinuierliche Bewegung
+    // Für inkrementelles Pan-Tracking
+    private var lastPanTranslation: CGPoint = .zero
     private var moveTimer: Timer?
     private var currentDirection: CGPoint = .zero
     
-    // Skalierungsfaktor für Siri Remote Touchpad
-    private let touchScaleFactor: CGFloat = 2.0
+    // Scroll-Geschwindigkeit - kleinerer Wert = langsameres Scrollen
+    private let scrollSpeed: CGFloat = 1.5
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
         view.backgroundColor = .black
-        
-        // Erstelle UIWebView
-        setupWebView()
-        
-        // Wichtig: View muss fokussierbar sein für Siri Remote
         view.isUserInteractionEnabled = true
         
-        print("🎮 TVOSWebViewHostController geladen")
+        if #available(tvOS 11.0, *) {
+            additionalSafeAreaInsets = .zero
+        }
+        
+        setupWebView()
+        setupGestureRecognizers()
     }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Setze diesen Controller als First Responder für Press-Events
-        let success = becomeFirstResponder()
-        print("🎮 ViewDidAppear - becomeFirstResponder: \(success)")
-        print("🎮 onTap callback gesetzt: \(onTap != nil)")
-        print("🎮 onPan callback gesetzt: \(onPan != nil)")
-        print("🎮 onDoubleTap callback gesetzt: \(onDoubleTap != nil)")
-        
-        // Füge Tap Gesture Recognizer hinzu als Backup
-        setupGestureRecognizers()
+        _ = becomeFirstResponder()
+        setNeedsFocusUpdate()
+        updateFocusIfNeeded()
     }
     
-    override var canBecomeFirstResponder: Bool {
-        return true
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        webView?.frame = view.bounds
     }
+    
+    override var canBecomeFirstResponder: Bool { true }
+    
+    // MARK: - Setup
     
     private func setupGestureRecognizers() {
-        // Entferne alte Recognizers
         view.gestureRecognizers?.forEach { view.removeGestureRecognizer($0) }
         
-        // Tap Gesture für Select-Button auf Siri Remote
-        let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTapGesture(_:)))
+        // Pan-Geste für Touchpad
+        let panRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
+        panRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
+        view.addGestureRecognizer(panRecognizer)
+        
+        // Tap für Select-Taste
+        let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTapGesture))
         tapRecognizer.allowedPressTypes = [NSNumber(value: UIPress.PressType.select.rawValue)]
         view.addGestureRecognizer(tapRecognizer)
-        print("🎮 Tap Gesture Recognizer hinzugefügt")
         
-        // Play/Pause für Moduswechsel
-        let playPauseRecognizer = UITapGestureRecognizer(target: self, action: #selector(handlePlayPauseGesture(_:)))
+        // Play/Pause
+        let playPauseRecognizer = UITapGestureRecognizer(target: self, action: #selector(handlePlayPauseGesture))
         playPauseRecognizer.allowedPressTypes = [NSNumber(value: UIPress.PressType.playPause.rawValue)]
         view.addGestureRecognizer(playPauseRecognizer)
-        print("🎮 Play/Pause Gesture Recognizer hinzugefügt")
     }
     
-    @objc private func handleTapGesture(_ recognizer: UITapGestureRecognizer) {
-        print("🎮 TAP GESTURE ERKANNT! State: \(recognizer.state.rawValue)")
-        print("🎮 onTap ist: \(onTap != nil ? "gesetzt" : "nil")")
-        if let tap = onTap {
-            print("🎮 Rufe onTap callback auf...")
-            tap()
-            print("🎮 onTap callback aufgerufen")
-        } else {
-            print("❌ onTap ist nil!")
+    // MARK: - Pan Gesture (KORRIGIERT)
+    
+    @objc private func handlePanGesture(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            // Reset beim Start der Geste
+            lastPanTranslation = .zero
+            
+        case .changed:
+            // Aktuelle Translation seit Gestenbeginn
+            let currentTranslation = recognizer.translation(in: view)
+            
+            // Berechne die DIFFERENZ seit dem letzten Update
+            let deltaX = currentTranslation.x - lastPanTranslation.x
+            let deltaY = currentTranslation.y - lastPanTranslation.y
+            
+            // Speichere für nächstes Update
+            lastPanTranslation = currentTranslation
+            
+            // Skaliere die Bewegung
+            let scaledDelta = CGPoint(
+                x: deltaX * scrollSpeed,
+                y: deltaY * scrollSpeed
+            )
+            
+            // Nur bei tatsächlicher Bewegung
+            if abs(scaledDelta.x) > 0.1 || abs(scaledDelta.y) > 0.1 {
+                onPan?(scaledDelta)
+            }
+            
+        case .ended:
+            // Momentum-Scroll bei schneller Bewegung
+            let velocity = recognizer.velocity(in: view)
+            if abs(velocity.y) > 100 {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("StartMomentumScroll"),
+                    object: nil,
+                    userInfo: ["velocityY": velocity.y * 0.05]
+                )
+            }
+            lastPanTranslation = .zero
+            
+        case .cancelled, .failed:
+            lastPanTranslation = .zero
+            
+        default:
+            break
         }
     }
     
-    @objc private func handlePlayPauseGesture(_ recognizer: UITapGestureRecognizer) {
-        print("🎮 PLAY/PAUSE GESTURE ERKANNT! State: \(recognizer.state.rawValue)")
-        print("🎮 onDoubleTap ist: \(onDoubleTap != nil ? "gesetzt" : "nil")")
-        if let doubleTap = onDoubleTap {
-            print("🎮 Rufe onDoubleTap callback auf...")
-            doubleTap()
-            print("🎮 onDoubleTap callback aufgerufen")
-        } else {
-            print("❌ onDoubleTap ist nil!")
-        }
+    @objc private func handleTapGesture() {
+        onTap?()
     }
+    
+    @objc private func handlePlayPauseGesture() {
+        onDoubleTap?()
+    }
+    
+    // MARK: - WebView Setup
     
     private func setupWebView() {
         guard let webViewClass = NSClassFromString("UIWebView") as? UIView.Type else {
-            print("❌ UIWebView nicht verfügbar")
+            print("⚠️ UIWebView nicht verfügbar!")
             return
         }
         
+        let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        UserDefaults.standard.register(defaults: ["UserAgent": userAgent])
+        
         let webView = webViewClass.init()
-        webView.translatesAutoresizingMaskIntoConstraints = false
         webView.backgroundColor = .black
+        webView.isUserInteractionEnabled = false
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        webView.frame = view.bounds
+        
         view.addSubview(webView)
+        self.webView = webView
+        externalWebViewController?.webView = webView
         
-        NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: view.topAnchor),
-            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-        
-        // Setup Delegate
         webView.setValue(self, forKey: "delegate")
         
-        // Deaktiviere User Interaction auf WebView (wird über unser Cursor-System gesteuert)
-        webView.isUserInteractionEnabled = false
-        
-        // Konfiguriere ScrollView
         if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
             scrollView.isScrollEnabled = false
             scrollView.bounces = false
+            if #available(tvOS 11.0, *) {
+                scrollView.contentInsetAdjustmentBehavior = .never
+            }
         }
-        
-        // Setze User Agent
-        let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Safari/605.1.15"
-        UserDefaults.standard.register(defaults: ["UserAgent": userAgent])
-        
-        self.webView = webView
-        print("✅ UIWebView erstellt")
     }
     
     func loadURL(_ urlString: String) {
-        guard let webView = webView, let url = URL(string: urlString) else { return }
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.loadURL(urlString)
+            }
+            return
+        }
         
+        guard let webView = webView, let url = URL(string: urlString) else { return }
         let request = URLRequest(url: url)
         let loadRequestSelector = NSSelectorFromString("loadRequest:")
         if webView.responds(to: loadRequestSelector) {
             webView.perform(loadRequestSelector, with: request)
-            print("🌐 Lade URL: \(urlString)")
         }
     }
     
-    // MARK: - Siri Remote Touch Handling
-    
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        touchStartLocation = touch.location(in: view)
-        lastTouchLocation = touchStartLocation
-        hasMoved = false
-        print("👆 Touch began at: \(touchStartLocation)")
-    }
-    
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        let currentLocation = touch.location(in: view)
-        
-        // Berechne Delta seit letzter Position
-        let deltaX = currentLocation.x - lastTouchLocation.x
-        let deltaY = currentLocation.y - lastTouchLocation.y
-        
-        // Minimale Bewegungsschwelle um Jitter zu vermeiden
-        let minMovement: CGFloat = 0.5
-        guard abs(deltaX) > minMovement || abs(deltaY) > minMovement else {
-            return
-        }
-        
-        hasMoved = true
-        
-        // Skaliere die Bewegung für die Siri Remote
-        let scaledDelta = CGPoint(
-            x: deltaX * touchScaleFactor,
-            y: deltaY * touchScaleFactor
-        )
-        
-        // Callback sofort aufrufen - keine Debug-Ausgabe um Performance nicht zu beeinträchtigen
-        onPan?(scaledDelta)
-        
-        lastTouchLocation = currentLocation
-    }
-    
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        print("👆 Touch ended - hasMoved: \(hasMoved)")
-        
-        // Wenn keine Bewegung war -> als Tap werten (wird aber vom Select-Button gehandelt)
-        // Touch-basierte Taps deaktiviert, da der Select-Button die primäre Tap-Quelle ist
-        
-        stopContinuousMove()
-        hasMoved = false
-    }
-    
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        stopContinuousMove()
-    }
-    
-    // MARK: - Press Handling (D-Pad und Buttons)
+    // MARK: - Press Handling (Pfeiltasten)
     
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        print("🎮 ===== pressesBegan aufgerufen mit \(presses.count) Press-Events =====")
-        
         for press in presses {
-            print("🎮 Press Type Raw Value: \(press.type.rawValue)")
-            if let key = press.key {
-                print("🎮 Press Key: \(String(describing: key.keyCode))")
-            } else {
-                print("🎮 Press Key: keine")
-            }
-            
             switch press.type {
             case .select:
-                print("🎮 ➡️ SELECT/OK TASTE GEDRÜCKT")
-                print("🎮 onTap ist: \(onTap != nil ? "gesetzt" : "nil")")
-                if let tap = onTap {
-                    print("🎮 Rufe onTap callback auf...")
-                    tap()
-                    print("🎮 onTap callback wurde aufgerufen")
-                } else {
-                    print("❌ onTap callback ist nil!")
-                }
-                
+                onTap?()
             case .playPause:
-                print("🎮 ➡️ PLAY/PAUSE TASTE GEDRÜCKT")
-                print("🎮 onDoubleTap ist: \(onDoubleTap != nil ? "gesetzt" : "nil")")
-                if let doubleTap = onDoubleTap {
-                    doubleTap()
-                }
-                
+                onDoubleTap?()
             case .menu:
-                print("🎮 ➡️ MENU TASTE GEDRÜCKT")
-                super.pressesBegan(presses, with: event)
-                
+                if let menuHandler = onMenuPress {
+                    menuHandler()
+                } else {
+                    super.pressesBegan(presses, with: event)
+                }
             case .upArrow:
-                print("🎮 ➡️ PFEIL HOCH GEDRÜCKT")
-                startContinuousMove(direction: CGPoint(x: 0, y: -20))
-                
+                startContinuousScroll(direction: CGPoint(x: 0, y: -20))
             case .downArrow:
-                print("🎮 ➡️ PFEIL RUNTER GEDRÜCKT")
-                startContinuousMove(direction: CGPoint(x: 0, y: 20))
-                
+                startContinuousScroll(direction: CGPoint(x: 0, y: 20))
             case .leftArrow:
-                print("🎮 ➡️ PFEIL LINKS GEDRÜCKT")
-                startContinuousMove(direction: CGPoint(x: -20, y: 0))
-                
+                startContinuousScroll(direction: CGPoint(x: -20, y: 0))
             case .rightArrow:
-                print("🎮 ➡️ PFEIL RECHTS GEDRÜCKT")
-                startContinuousMove(direction: CGPoint(x: 20, y: 0))
-                
-            case .pageUp:
-                print("🎮 ➡️ PAGE UP GEDRÜCKT")
-                super.pressesBegan(presses, with: event)
-                
-            case .pageDown:
-                print("🎮 ➡️ PAGE DOWN GEDRÜCKT")
-                super.pressesBegan(presses, with: event)
-            
-            case .tvRemoteOneTwoThree:
-                print("🎮 ➡️ TV REMOTE 1-2-3 GEDRÜCKT")
-                super.pressesBegan(presses, with: event)
-                
-            @unknown default:
-                print("🎮 ➡️ UNBEKANNTE TASTE GEDRÜCKT: \(press.type.rawValue)")
+                startContinuousScroll(direction: CGPoint(x: 20, y: 0))
+            default:
                 super.pressesBegan(presses, with: event)
             }
         }
@@ -404,16 +301,16 @@ class TVOSWebViewHostController: UIViewController {
         for press in presses {
             switch press.type {
             case .upArrow, .downArrow, .leftArrow, .rightArrow:
-                stopContinuousMove()
+                stopContinuousScroll()
             default:
                 super.pressesEnded(presses, with: event)
             }
         }
     }
     
-    private func startContinuousMove(direction: CGPoint) {
+    private func startContinuousScroll(direction: CGPoint) {
         currentDirection = direction
-        onPan?(direction) // Sofortige erste Bewegung
+        onPan?(direction)
         
         moveTimer?.invalidate()
         moveTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
@@ -422,13 +319,13 @@ class TVOSWebViewHostController: UIViewController {
         }
     }
     
-    private func stopContinuousMove() {
+    private func stopContinuousScroll() {
         moveTimer?.invalidate()
         moveTimer = nil
         currentDirection = .zero
     }
     
-    // MARK: - UIWebViewDelegate Methods
+    // MARK: - UIWebViewDelegate
     
     @objc func webViewDidStartLoad(_ webView: UIView) {
         coordinator?.webViewDidStartLoad()
@@ -440,13 +337,8 @@ class TVOSWebViewHostController: UIViewController {
         var pageTitle = ""
         var currentURL = ""
         
-        if let back = webView.value(forKey: "canGoBack") as? Bool {
-            canGoBack = back
-        }
-        
-        if let forward = webView.value(forKey: "canGoForward") as? Bool {
-            canGoForward = forward
-        }
+        if let back = webView.value(forKey: "canGoBack") as? Bool { canGoBack = back }
+        if let forward = webView.value(forKey: "canGoForward") as? Bool { canGoForward = forward }
         
         let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
         if webView.responds(to: jsSelector) {
@@ -455,11 +347,11 @@ class TVOSWebViewHostController: UIViewController {
             }
         }
         
-        if let request = webView.value(forKey: "request") as? URLRequest,
-           let url = request.url {
+        if let request = webView.value(forKey: "request") as? URLRequest, let url = request.url {
             currentURL = url.absoluteString
         }
         
+        externalWebViewController?.webView = webView
         coordinator?.webViewDidFinishLoad(canGoBack: canGoBack, canGoForward: canGoForward, pageTitle: pageTitle, currentURL: currentURL)
     }
     
@@ -472,9 +364,8 @@ class TVOSWebViewHostController: UIViewController {
     }
 }
 
-// MARK: - WebView Controller für Interaktion
+// MARK: - TVOSWebViewController
 
-/// Controller für WebView-Operationen von außen
 class TVOSWebViewController: ObservableObject {
     @Published var urlString: String = ""
     @Published var isLoading: Bool = false
@@ -484,91 +375,106 @@ class TVOSWebViewController: ObservableObject {
     
     var webView: UIView?
     
-    /// Klick an Position im WebView
-    func clickAtPoint(_ point: CGPoint) {
-        print("🖱️ clickAtPoint aufgerufen mit Position: \(point)")
-        
-        guard let webView = self.webView else {
-            print("❌ WebView ist nil!")
-            return
-        }
-        
-        print("✅ WebView vorhanden, Frame: \(webView.frame)")
-        
-        let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
-        guard webView.responds(to: jsSelector) else {
-            print("❌ WebView antwortet nicht auf JS-Selector!")
-            return
-        }
-        
-        // Berechne Skalierung
-        let displayWidthStr = evaluateJavaScript("window.innerWidth") ?? "1920"
-        let displayWidth = Int(displayWidthStr) ?? Int(webView.frame.width)
-        let scale = webView.frame.width / CGFloat(displayWidth)
-        
-        let scaledX = Int(point.x / scale)
-        let scaledY = Int(point.y / scale)
-        
-        print("📐 Scale: \(scale), Skalierte Position: (\(scaledX), \(scaledY))")
-        
-        // Ermittle Element unter der Position
-        let elementInfoJS = """
-            (function() {
-                var el = document.elementFromPoint(\(scaledX), \(scaledY));
-                if (el) {
-                    return el.tagName + ' | ' + (el.id || 'no-id') + ' | ' + (el.className || 'no-class') + ' | ' + (el.href || 'no-href');
-                }
-                return 'kein Element';
-            })()
-        """
-        
-        if let elementInfo = evaluateJavaScript(elementInfoJS) {
-            print("🔍 Element unter Cursor: \(elementInfo)")
-        }
-        
-        // Führe Click aus
-        let clickJS = """
-            (function() {
-                var el = document.elementFromPoint(\(scaledX), \(scaledY));
-                if (el) {
-                    el.click();
-                    return 'geklickt auf ' + el.tagName;
-                }
-                return 'kein Element gefunden';
-            })()
-        """
-        
-        if let result = evaluateJavaScript(clickJS) {
-            print("✅ Click-Ergebnis: \(result)")
-        }
-        
-        // Prüfe auf Input-Felder
-        let fieldTypeJS = """
-            (function() {
-                var el = document.elementFromPoint(\(scaledX), \(scaledY));
-                return el ? el.type || 'undefined' : 'no-element';
-            })()
-        """
-        
-        if let fieldType = evaluateJavaScript(fieldTypeJS) {
-            print("🔍 Field Type: \(fieldType)")
-        }
+    private var displayLink: CADisplayLink?
+    private var currentScrollVelocity: CGFloat = 0
+    private let scrollDeceleration: CGFloat = 0.95
+    private let minVelocityThreshold: CGFloat = 0.5
+    
+    init() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMomentumScroll(_:)),
+            name: NSNotification.Name("StartMomentumScroll"),
+            object: nil
+        )
     }
     
-    /// Scrollt im WebView
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        stopMomentumScroll()
+    }
+    
+    @objc private func handleMomentumScroll(_ notification: Notification) {
+        guard let velocityY = notification.userInfo?["velocityY"] as? CGFloat else { return }
+        startMomentumScroll(initialVelocity: velocityY)
+    }
+    
+    private func startMomentumScroll(initialVelocity: CGFloat) {
+        currentScrollVelocity = initialVelocity
+        
+        guard abs(currentScrollVelocity) > minVelocityThreshold else { return }
+        
+        stopMomentumScroll()
+        
+        displayLink = CADisplayLink(target: self, selector: #selector(updateMomentumScroll))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+    
+    @objc private func updateMomentumScroll() {
+        currentScrollVelocity *= scrollDeceleration
+        
+        if abs(currentScrollVelocity) < minVelocityThreshold {
+            stopMomentumScroll()
+            return
+        }
+        
+        performScroll(by: currentScrollVelocity)
+    }
+    
+    private func stopMomentumScroll() {
+        displayLink?.invalidate()
+        displayLink = nil
+        currentScrollVelocity = 0
+    }
+    
+    private func performScroll(by offset: CGFloat) {
+        guard let webView = self.webView,
+              let scrollView = webView.value(forKey: "scrollView") as? UIScrollView else {
+            return
+        }
+        
+        let currentOffset = scrollView.contentOffset
+        let newY = currentOffset.y + offset
+        let maxY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
+        let clampedY = min(max(0, newY), maxY)
+        
+        // Bounce-Effekt am Rand
+        if newY < 0 || newY > maxY {
+            currentScrollVelocity *= 0.3
+        }
+        
+        scrollView.contentOffset = CGPoint(x: currentOffset.x, y: clampedY)
+    }
+    
+    /// Scrollt die WebView um den angegebenen Offset
     func scroll(by offset: CGFloat) {
-        let scrollJS = "window.scrollBy(0, \(offset))"
-        _ = evaluateJavaScript(scrollJS)
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.scroll(by: offset)
+            }
+            return
+        }
+        
+        guard let webView = self.webView,
+              let scrollView = webView.value(forKey: "scrollView") as? UIScrollView else {
+            return
+        }
+        
+        // Stoppe laufendes Momentum-Scrolling
+        stopMomentumScroll()
+        
+        let currentOffset = scrollView.contentOffset
+        let newY = currentOffset.y + offset
+        let maxY = max(0, scrollView.contentSize.height - scrollView.bounds.height)
+        let clampedY = min(max(0, newY), maxY)
+        
+        scrollView.contentOffset = CGPoint(x: currentOffset.x, y: clampedY)
     }
     
     func evaluateJavaScript(_ script: String) -> String? {
         guard let webView = self.webView else { return nil }
         let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
-        guard webView.responds(to: jsSelector) else {
-            return nil
-        }
-        
-        return webView.perform(jsSelector, with: script)?
-            .takeUnretainedValue() as? String
+        guard webView.responds(to: jsSelector) else { return nil }
+        return webView.perform(jsSelector, with: script)?.takeUnretainedValue() as? String
     }
 }

@@ -16,10 +16,33 @@ enum CursorState {
     case loading      // Während Ladevorgang
 }
 
-/// Cursor-Modus
-enum CursorMode {
-    case navigation   // Cursor-basierte Navigation
+/// Cursor-Modus mit detaillierter Zustandskontrolle
+enum CursorMode: Equatable {
+    case navigation   // Cursor-basierte Navigation (Standard)
     case scroll       // Scroll-Modus für Viewport-Bewegung
+    case pan          // Pan-Bewegung auf der Seite
+    case idle         // Idle-Modus (inaktiv)
+    case dragging     // Aktives Zieh-Element
+    
+    var displayName: String {
+        switch self {
+        case .navigation: return "CURSOR"
+        case .scroll: return "SCROLL"
+        case .pan: return "PAN"
+        case .idle: return "IDLE"
+        case .dragging: return "DRAGGING"
+        }
+    }
+    
+    var indicatorColor: Color {
+        switch self {
+        case .navigation: return Color.blue
+        case .scroll: return Color.purple
+        case .pan: return Color.orange
+        case .idle: return Color.gray
+        case .dragging: return Color.red
+        }
+    }
 }
 
 struct CursorView: View {
@@ -176,16 +199,17 @@ struct CursorView: View {
     
     @ViewBuilder
     private var modeIndicator: some View {
-        Text(mode == .navigation ? "CURSOR" : "SCROLL")
+        Text(mode.displayName)
             .font(.system(size: 14, weight: .bold))
             .foregroundColor(.white)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(
                 Capsule()
-                    .fill(mode == .navigation ? Color.blue : Color.purple)
+                    .fill(mode.indicatorColor)
                     .opacity(0.8)
             )
+            .shadow(color: mode.indicatorColor.opacity(0.5), radius: 4, x: 0, y: 0)
     }
 }
 
@@ -196,14 +220,20 @@ enum EdgePosition {
     case bottom
 }
 
-/// Cursor-Manager für Bewegung und Interaktion
+/// Cursor-Manager für Bewegung und Interaktion mit erweiterter Zustandskontrolle
 final class CursorManager: ObservableObject {
     @Published var position: CGPoint = .zero
     @Published var state: CursorState = .standard
-    @Published var mode: CursorMode = .navigation
+    @Published var mode: CursorMode = .scroll  // GEÄNDERT: Standard ist jetzt Scroll-Mode für direktes Scrollen
     @Published var isVisible: Bool = true
-    @Published var isClicked: Bool = false // Für die Klick-Animation
+    @Published var isClicked: Bool = false
     @Published var edgePosition: EdgePosition = .none
+    
+    // Erweiterte Zustandsverfolgung
+    @Published var previousMode: CursorMode = .scroll
+    @Published var modeChangeTimestamp: Date = Date()
+    @Published var isInMotion: Bool = false
+    @Published var lastMoveTime: Date = Date()
     
     // Bewegungs-Konfiguration
     private let moveSpeed: CGFloat = 1.2
@@ -211,23 +241,31 @@ final class CursorManager: ObservableObject {
     private var targetPosition: CGPoint = .zero
     private var displayLink: CADisplayLink?
     private var isAnimating: Bool = false
+    // Idle-Timer deaktiviert - verursacht ständiges Wechseln
+    // private var idleTimer: Timer?
+    // private let idleTimeout: TimeInterval = 5.0
     
     // Screen-Boundaries mit Rand-Zone
     var screenBounds: CGRect = .zero
-    private let edgeZoneHeight: CGFloat = 80.0 // Zone am Rand für Auto-Scroll
-    private let minY: CGFloat = 100.0          // Obere Grenze (unter der Nav-Bar)
+    private let edgeZoneHeight: CGFloat = 80.0
+    private let minY: CGFloat = 100.0
+    
+    // Bewegungs-Historie für Trägheitserkennung
+    private var recentMovements: [CGPoint] = []
+    private let maxRecentMovements: Int = 10
     
     init() {
-        // Die screenBounds werden jetzt von der aufrufenden View gesetzt.
-        // Initialisiere mit .zero, um einen Absturz zu vermeiden.
         screenBounds = .zero
         position = .zero
         targetPosition = .zero
+        // Idle-Timer deaktiviert - verursacht ständiges Wechseln zwischen Modi
     }
     
     deinit {
         stopAnimation()
     }
+    
+    // MARK: - Mode Management
     
     private func startAnimation() {
         guard !isAnimating else { return }
@@ -250,7 +288,6 @@ final class CursorManager: ObservableObject {
     private func updatePosition() {
         let distance = position.distance(to: targetPosition)
         
-        // Stoppe Animation, wenn Ziel erreicht
         guard distance > 0.5 else {
             if position != targetPosition {
                 position = targetPosition
@@ -264,42 +301,43 @@ final class CursorManager: ObservableObject {
         position = CGPoint(x: newX, y: newY)
     }
 
-    /// Bewegt den Cursor basierend auf der Translation einer Geste
+    /// Bewegt den Cursor mit verbesserter Zustandsverwaltung
     func move(by translation: CGPoint) {
+        // Aktualisiere Bewegungs-Historie
+        recentMovements.append(translation)
+        if recentMovements.count > maxRecentMovements {
+            recentMovements.removeFirst()
+        }
+        
+        lastMoveTime = Date()
+        isInMotion = true
+        
         targetPosition.x += translation.x * moveSpeed
         targetPosition.y += translation.y * moveSpeed
         
-        // Begrenze auf Bildschirmgrenzen (horizontale Grenzen)
         let padding: CGFloat = 20.0
         targetPosition.x = max(padding, min(targetPosition.x, screenBounds.width - padding))
         
-        // Vertikale Grenzen: Oben unter der Nav-Bar, unten über dem Bildschirmrand
         let maxY = screenBounds.height - edgeZoneHeight
         let clampedY = max(minY, min(targetPosition.y, maxY))
         
-        // Prüfe, ob Cursor am Rand ist für Auto-Scroll
         let previousEdge = edgePosition
         if targetPosition.y <= minY {
-            // Cursor versucht über oberen Rand zu gehen
             edgePosition = .top
             print("🔝 Cursor am oberen Rand - targetY: \(targetPosition.y), minY: \(minY)")
         } else if targetPosition.y >= maxY {
-            // Cursor versucht über unteren Rand zu gehen
             edgePosition = .bottom
             print("🔽 Cursor am unteren Rand - targetY: \(targetPosition.y), maxY: \(maxY)")
         } else {
             edgePosition = .none
         }
         
-        // Cursor auf Grenzen clampen
         targetPosition.y = clampedY
         
-        // Debug-Ausgabe bei Randwechsel
         if previousEdge != edgePosition && edgePosition != .none {
             print("🔳 Edge changed: \(previousEdge) -> \(edgePosition)")
         }
         
-        // Starte Animation bei neuer Bewegung
         startAnimation()
     }
     
@@ -307,19 +345,47 @@ final class CursorManager: ObservableObject {
     func setCursorPosition(_ point: CGPoint) {
         targetPosition = point
         position = point
+        lastMoveTime = Date()
     }
     
-    /// Wechselt zwischen Cursor- und Scroll-Modus
+    /// Wechselt zwischen Modi mit besseren Übergängen
     func toggleMode() {
-        mode = mode == .navigation ? .scroll : .navigation
+        previousMode = mode
+        modeChangeTimestamp = Date()
+        
+        switch mode {
+        case .navigation:
+            mode = .scroll
+        case .scroll:
+            mode = .navigation
+        case .pan:
+            mode = .navigation
+        case .idle:
+            mode = .navigation
+        case .dragging:
+            mode = .navigation
+        }
+        
+        print("🔄 Mode-Wechsel: \(previousMode) -> \(mode)")
     }
     
-    /// Versteckt/Zeigt den Cursor
+    /// Wechselt zu spezifischem Modus
+    func setMode(_ newMode: CursorMode) {
+        guard newMode != mode else { return }
+        previousMode = mode
+        mode = newMode
+        modeChangeTimestamp = Date()
+        print("🔄 Mode gesetzt zu: \(mode)")
+    }
+    
+    /// Versteckt/Zeigt den Cursor mit weicheren Übergängen
     func toggleVisibility() {
-        isVisible.toggle()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isVisible.toggle()
+        }
     }
     
-    /// Erkennt Element unter Cursor
+    /// Erkennt Element unter Cursor (kann erweitert werden)
     func detectElementAtCursor() -> CursorState {
         return .standard
     }
@@ -327,20 +393,29 @@ final class CursorManager: ObservableObject {
     /// Löst die Klick-Animation aus
     func performClick() {
         print("🔵 CursorManager.performClick() aufgerufen")
-        print("🔵 isClicked war: \(isClicked)")
         
-        // Setze isClicked auf true, um die Animation in der View via .onChange auszulösen
         if !isClicked {
             isClicked = true
             print("🔵 isClicked auf true gesetzt")
         } else {
-            print("🔵 isClicked war bereits true, setze trotzdem neu")
-            // Force reset und dann wieder setzen
             isClicked = false
             DispatchQueue.main.async {
                 self.isClicked = true
             }
         }
+    }
+    
+    /// Startet Drag-Bewegung
+    func startDragging() {
+        previousMode = mode
+        mode = .dragging
+        print("👐 Dragging-Modus aktiviert")
+    }
+    
+    /// Beendet Drag-Bewegung
+    func endDragging() {
+        mode = previousMode
+        print("👐 Zurück zu Modus: \(mode)")
     }
 }
 
