@@ -5,24 +5,97 @@
 
 import Foundation
 
-/// Repräsentiert ein einzelnes Suchergebnis aus der Google-Suche.
+/// Content-Type für Suchergebnisse
+enum SearchContentType: String, Codable, CaseIterable, Sendable {
+    case web = "web"
+    case image = "image"
+    case video = "video"
+    case info = "info"
+    
+    var displayName: String {
+        switch self {
+        case .web: return "Alle"
+        case .image: return "Bilder"
+        case .video: return "Videos"
+        case .info: return "Info"
+        }
+    }
+    
+    var iconName: String {
+        switch self {
+        case .web: return "globe"
+        case .image: return "photo.on.rectangle"
+        case .video: return "video"
+        case .info: return "book.closed"
+        }
+    }
+}
+
+/// Repräsentiert ein einzelnes Suchergebnis aus verschiedenen Suchquellen.
 /// Sendable für Thread-sichere Übergabe zwischen Actor-Kontexten.
 struct SearchResult: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let title: String
     let url: String
     let description: String
+    let contentType: SearchContentType
+    
+    // Zusätzliche Metadaten für Bilder und Videos
+    let thumbnailURL: String?
+    let imageWidth: Int?
+    let imageHeight: Int?
+    let duration: String?  // Format: "HH:MM:SS" oder "MM:SS"
+    let source: String?    // z.B. "YouTube", "Vimeo", "Flickr"
     
     var displayURL: String {
         Self.extractDisplayURL(from: url)
     }
     
+    var aspectRatio: CGFloat {
+        guard let width = imageWidth, let height = imageHeight, width > 0, height > 0 else {
+            return contentType == .video ? 16.0/9.0 : 1.0
+        }
+        return CGFloat(width) / CGFloat(height)
+    }
+    
     // MARK: - Initialization
+    
+    /// Standard Web-Suchergebnis
     init(title: String, url: String, description: String) {
         self.id = UUID()
         self.title = title
         self.url = url
         self.description = description
+        self.contentType = .web
+        self.thumbnailURL = nil
+        self.imageWidth = nil
+        self.imageHeight = nil
+        self.duration = nil
+        self.source = nil
+    }
+    
+    /// Erweiterte Initialisierung für alle Content-Typen
+    init(
+        title: String,
+        url: String,
+        description: String,
+        contentType: SearchContentType,
+        thumbnailURL: String? = nil,
+        imageWidth: Int? = nil,
+        imageHeight: Int? = nil,
+        duration: String? = nil,
+        source: String? = nil
+    ) {
+        self.id = UUID()
+        self.title = title
+        self.url = url
+        self.description = description
+        self.contentType = contentType
+        self.thumbnailURL = thumbnailURL
+        self.imageWidth = imageWidth
+        self.imageHeight = imageHeight
+        self.duration = duration
+        self.source = source
     }
     
     // MARK: - Codable
@@ -31,19 +104,27 @@ struct SearchResult: Identifiable, Codable, Hashable, Sendable {
         case title
         case url
         case description
-        case displayURL
+        case contentType
+        case thumbnailURL
+        case imageWidth
+        case imageHeight
+        case duration
+        case source
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        // ID ist optional beim Dekodieren (für JavaScript-Parsing)
         self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         self.title = try container.decode(String.self, forKey: .title)
         self.url = try container.decode(String.self, forKey: .url)
         self.description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
-        
-        // displayURL is now computed and does not need to be decoded.
+        self.contentType = try container.decodeIfPresent(SearchContentType.self, forKey: .contentType) ?? .web
+        self.thumbnailURL = try container.decodeIfPresent(String.self, forKey: .thumbnailURL)
+        self.imageWidth = try container.decodeIfPresent(Int.self, forKey: .imageWidth)
+        self.imageHeight = try container.decodeIfPresent(Int.self, forKey: .imageHeight)
+        self.duration = try container.decodeIfPresent(String.self, forKey: .duration)
+        self.source = try container.decodeIfPresent(String.self, forKey: .source)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -52,7 +133,12 @@ struct SearchResult: Identifiable, Codable, Hashable, Sendable {
         try container.encode(title, forKey: .title)
         try container.encode(url, forKey: .url)
         try container.encode(description, forKey: .description)
-        try container.encode(displayURL, forKey: .displayURL)
+        try container.encode(contentType, forKey: .contentType)
+        try container.encodeIfPresent(thumbnailURL, forKey: .thumbnailURL)
+        try container.encodeIfPresent(imageWidth, forKey: .imageWidth)
+        try container.encodeIfPresent(imageHeight, forKey: .imageHeight)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(source, forKey: .source)
     }
     
     // MARK: - Hashable

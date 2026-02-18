@@ -4,11 +4,12 @@
 //
 
 import Foundation
+import Combine
 import os.log
 
-/// Service für die Web-Suche über mehrere Suchmaschinen.
-/// Verwendet Actor-Isolation für Thread-Sicherheit.
-actor SearchService {
+/// Service für die Web-Suche.
+@MainActor
+class SearchService: ObservableObject {
     
     // MARK: - Logger
     private let logger = Logger(subsystem: "AppleTVBrowser", category: "SearchService")
@@ -21,7 +22,9 @@ actor SearchService {
         case parsingError
         case noResults
         case rateLimited
-        case allSourcesFailed
+        case backendError(String)
+        case apiKeyMissing
+        case apiQuotaExceeded
         
         var errorDescription: String? {
             switch self {
@@ -37,43 +40,32 @@ actor SearchService {
                 return "Keine Ergebnisse gefunden"
             case .rateLimited:
                 return "Zu viele Anfragen. Bitte warte einen Moment."
-            case .allSourcesFailed:
-                return "Alle Suchquellen fehlgeschlagen. Prüfe deine Internetverbindung."
+            case .backendError(let message):
+                return "Backend-Fehler: \(message)"
+            case .apiKeyMissing:
+                return "API-Key nicht konfiguriert"
+            case .apiQuotaExceeded:
+                return "API-Limit erreicht. Versuche es später erneut."
             }
         }
     }
     
-    // MARK: - Search Source
-    enum SearchSource: String, CaseIterable {
-        case duckduckgo = "DuckDuckGo"
-        case duckduckgoHTML = "DuckDuckGo HTML"
-        case google = "Google"
-    }
-    
     // MARK: - Configuration
     private struct Configuration {
-        static let maxResults = 20
-        static let requestTimeout: TimeInterval = 15
+        static let maxResults = 50
+        static let requestTimeout: TimeInterval = 30
+        static let maxRetries = 2
+        static let retryDelay: UInt64 = 1_000_000_000
+        
         static let userAgents = [
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ]
-        
-        // Such-URLs
-        static let duckDuckGoLiteURL = "https://lite.duckduckgo.com/lite/"
-        static let duckDuckGoHTMLURL = "https://html.duckduckgo.com/html/"
-        static let googleURL = "https://www.google.com/search"
-        
-        // Debugging
-        static let enableDebugOutput = true
-        
-        // Retry settings
-        static let maxRetries = 2
-        static let retryDelay: UInt64 = 500_000_000 // 0.5 seconds in nanoseconds
     }
     
     // MARK: - Properties
     private var session: URLSession
+    @Published var wikipediaInfos: [String: WikipediaInfo] = [:]
     
     // MARK: - Initialization
     init() {
@@ -81,17 +73,16 @@ actor SearchService {
         config.timeoutIntervalForRequest = Configuration.requestTimeout
         config.timeoutIntervalForResource = Configuration.requestTimeout * 2
         config.httpAdditionalHeaders = [
-            "User-Agent": Configuration.userAgents.randomElement()!,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "de-DE,de;q=0.9,en;q=0.8"
+            "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+            "User-Agent": Configuration.userAgents.randomElement()!
         ]
         self.session = URLSession(configuration: config)
     }
     
     // MARK: - Public Methods
     
-    /// Führt eine Web-Suche durch und gibt die Ergebnisse zurück.
-    /// Versucht mehrere Suchquellen, falls eine fehlschlägt.
+    /// Führt eine Web-Suche durch (DuckDuckGo)
     func search(query: String) async throws -> [SearchResult] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -99,23 +90,9 @@ actor SearchService {
             throw SearchError.invalidQuery
         }
         
-        logger.info("🔍 Starte Suche für: \(trimmedQuery)")
+        logger.info("🔍 DuckDuckGo Web-Suche für: \(trimmedQuery)")
         
-        var lastError: Error?
-        
-        // Versuche DuckDuckGo Lite zuerst
-        do {
-            let results = try await searchDuckDuckGoLite(query: trimmedQuery)
-            if !results.isEmpty {
-                logger.info("✅ DuckDuckGo Lite: \(results.count) Ergebnisse")
-                return results
-            }
-        } catch {
-            logger.warning("⚠️ DuckDuckGo Lite fehlgeschlagen: \(error.localizedDescription)")
-            lastError = error
-        }
-        
-        // Fallback: DuckDuckGo HTML Version
+        // Versuche DuckDuckGo HTML zuerst
         do {
             let results = try await searchDuckDuckGoHTML(query: trimmedQuery)
             if !results.isEmpty {
@@ -124,97 +101,37 @@ actor SearchService {
             }
         } catch {
             logger.warning("⚠️ DuckDuckGo HTML fehlgeschlagen: \(error.localizedDescription)")
-            lastError = error
         }
         
-        // Fallback: Google
+        // Fallback: DuckDuckGo Lite
         do {
-            let results = try await searchGoogle(query: trimmedQuery)
+            let results = try await searchDuckDuckGoLite(query: trimmedQuery)
             if !results.isEmpty {
-                logger.info("✅ Google: \(results.count) Ergebnisse")
+                logger.info("✅ DuckDuckGo Lite: \(results.count) Ergebnisse")
                 return results
             }
         } catch {
-            logger.warning("⚠️ Google fehlgeschlagen: \(error.localizedDescription)")
-            lastError = error
-        }
-        
-        // Alle Quellen fehlgeschlagen
-        logger.error("❌ Alle Suchquellen fehlgeschlagen")
-        throw lastError ?? SearchError.allSourcesFailed
-    }
-    
-    // MARK: - DuckDuckGo Lite Search
-    
-    private func searchDuckDuckGoLite(query: String) async throws -> [SearchResult] {
-        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            throw SearchError.invalidQuery
-        }
-        
-        guard let url = URL(string: "\(Configuration.duckDuckGoLiteURL)?q=\(encodedQuery)") else {
-            throw SearchError.invalidURL
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        
-        logger.debug("📤 DuckDuckGo Lite Request: \(url.absoluteString)")
-        
-        // Retry logic for 202 status
-        for attempt in 0..<Configuration.maxRetries {
-            let (data, response) = try await session.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SearchError.networkError(NSError(domain: "HTTP", code: -1))
-            }
-            
-            logger.debug("📥 DuckDuckGo Lite Status: \(httpResponse.statusCode) (Attempt \(attempt + 1))")
-            
-            if httpResponse.statusCode == 202 {
-                // 202 means "Accepted" but results not ready yet - wait and retry
-                if attempt < Configuration.maxRetries - 1 {
-                    logger.debug("⏳ Status 202 - warte und versuche erneut...")
-                    try await Task.sleep(nanoseconds: Configuration.retryDelay)
-                    continue
-                } else {
-                    // After retries, try HTML version instead
-                    throw SearchError.noResults
-                }
-            }
-            
-            guard httpResponse.statusCode == 200 else {
-                throw SearchError.networkError(NSError(domain: "HTTP", code: httpResponse.statusCode))
-            }
-            
-            guard let html = String(data: data, encoding: .utf8) else {
-                throw SearchError.parsingError
-            }
-            
-            logger.debug("📄 HTML Länge: \(html.count) Zeichen")
-            
-            if Configuration.enableDebugOutput {
-                debugHTMLStructure(html: html, source: "DuckDuckGo Lite")
-            }
-            
-            return try await parseDuckDuckGoLiteResults(html: html)
+            logger.warning("⚠️ DuckDuckGo Lite fehlgeschlagen: \(error.localizedDescription)")
         }
         
         throw SearchError.noResults
     }
     
-    // MARK: - DuckDuckGo HTML Search (Fallback)
+    // MARK: - DuckDuckGo HTML Search
     
     private func searchDuckDuckGoHTML(query: String) async throws -> [SearchResult] {
         guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
             throw SearchError.invalidQuery
         }
         
-        guard let url = URL(string: "\(Configuration.duckDuckGoHTMLURL)?q=\(encodedQuery)") else {
+        let urlString = "https://html.duckduckgo.com/html/?q=\(encodedQuery)"
+        guard let url = URL(string: urlString) else {
             throw SearchError.invalidURL
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.setValue(Configuration.userAgents.randomElement()!, forHTTPHeaderField: "User-Agent")
         
         logger.debug("📤 DuckDuckGo HTML Request: \(url.absoluteString)")
         
@@ -234,28 +151,26 @@ actor SearchService {
             throw SearchError.parsingError
         }
         
-        logger.debug("📄 HTML Länge: \(html.count) Zeichen")
-        
-        if Configuration.enableDebugOutput {
-            debugHTMLStructure(html: html, source: "DuckDuckGo HTML")
-        }
-        
-        return try await parseDuckDuckGoHTMLResults(html: html)
+        return parseDuckDuckGoHTMLResults(html: html)
     }
-
-    private func parseDuckDuckGoLiteResults(html: String) async throws -> [SearchResult] {
+    
+    private func parseDuckDuckGoHTMLResults(html: String) -> [SearchResult] {
         var results: [SearchResult] = []
         var seenURLs = Set<String>()
-
-        // DuckDuckGo Lite - Pattern for result-link class
-        let pattern = "<a\\s+rel=\"nofollow\"\\s+href=\"([^\"]+)\"[^>]*class=['\"]result-link['\"]>([^<]+)</a>"
         
-        do {
-            let regex = try NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
+        // Pattern für DuckDuckGo HTML result__a Links
+        let patterns = [
+            "<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>([^<]+)</a>",
+            "<a[^>]*href=\"([^\"]+)\"[^>]*class=\"result__a\"[^>]*>([^<]+)</a>"
+        ]
+        
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+                continue
+            }
+            
             let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
             let matches = regex.matches(in: html, options: [], range: nsRange)
-            
-            logger.debug("🔍 Gefundene Links: \(matches.count)")
             
             for match in matches {
                 guard match.numberOfRanges >= 3,
@@ -267,38 +182,23 @@ actor SearchService {
                 var urlString = String(html[urlRange])
                 let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
                 
-                // Skip ads and internal links
-                if urlString.contains("ad_domain") || urlString.contains("ad_provider") {
-                    continue
-                }
-                
-                // Clean up URL - handle DuckDuckGo redirects
-                if urlString.contains("duckduckgo.com/l/?uddg=") {
+                // Handle DuckDuckGo redirect URLs
+                if urlString.contains("//duckduckgo.com/l/?") {
                     if let uddgRange = urlString.range(of: "uddg=") {
                         var encodedURL = String(urlString[uddgRange.upperBound...])
                         if let ampRange = encodedURL.range(of: "&") {
                             encodedURL = String(encodedURL[..<ampRange.lowerBound])
                         }
-                        if let decodedURL = encodedURL.removingPercentEncoding,
-                           decodedURL.hasPrefix("http") {
+                        if let decodedURL = encodedURL.removingPercentEncoding {
                             urlString = decodedURL
-                        } else {
-                            continue
                         }
-                    } else {
-                        continue
                     }
-                } else if urlString.hasPrefix("//") {
-                    urlString = "https:" + urlString
-                } else if urlString.hasPrefix("/") && !urlString.hasPrefix("//") {
-                    continue
-                } else if !urlString.hasPrefix("http") {
-                    continue
                 }
                 
-                guard !title.isEmpty,
+                // Validiere URL
+                guard urlString.hasPrefix("http"),
+                      !title.isEmpty,
                       title.count > 2,
-                      !title.contains("more info"),
                       isValidExternalURL(urlString),
                       !seenURLs.contains(urlString) else {
                     continue
@@ -306,122 +206,195 @@ actor SearchService {
                 
                 seenURLs.insert(urlString)
                 
-                await MainActor.run {
-                    results.append(SearchResult(title: title, url: urlString, description: ""))
-                }
+                // Versuche Beschreibung zu extrahieren
+                let description = extractDescription(for: urlString, from: html)
+                
+                results.append(SearchResult(
+                    title: title,
+                    url: urlString,
+                    description: description,
+                    contentType: .web
+                ))
                 
                 if results.count >= Configuration.maxResults {
                     break
                 }
             }
             
-        } catch {
-            logger.error("❌ Regex Fehler: \(error)")
-            throw SearchError.parsingError
-        }
-        
-        logger.debug("🔎 DuckDuckGo Lite geparst: \(results.count) Ergebnisse")
-        
-        if results.isEmpty {
-            throw SearchError.noResults
-        }
-        
-        return results
-    }
-    
-    private func parseDuckDuckGoHTMLResults(html: String) async throws -> [SearchResult] {
-        var results: [SearchResult] = []
-        var seenURLs = Set<String>()
-
-        // DuckDuckGo HTML version has different structure
-        // Pattern 1: Links with result__a class
-        let patterns = [
-            "<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>([^<]+)</a>",
-            "<a[^>]*href=\"([^\"]+)\"[^>]*class=\"result__a\"[^>]*>([^<]+)</a>",
-            "<a[^>]*class=['\"]result-link['\"][^>]*href=\"([^\"]+)\"[^>]*>([^<]+)</a>"
-        ]
-        
-        for pattern in patterns {
-            do {
-                let regex = try NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
-                let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
-                let matches = regex.matches(in: html, options: [], range: nsRange)
-                
-                logger.debug("🔍 DuckDuckGo HTML Pattern: \(matches.count) matches")
-                
-                for match in matches {
-                    guard match.numberOfRanges >= 3,
-                          let urlRange = Range(match.range(at: 1), in: html),
-                          let titleRange = Range(match.range(at: 2), in: html) else {
-                        continue
-                    }
-                    
-                    var urlString = String(html[urlRange])
-                    let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
-                    
-                    // Handle DuckDuckGo redirect URLs
-                    if urlString.contains("//duckduckgo.com/l/?") {
-                        if let uddgRange = urlString.range(of: "uddg=") {
-                            var encodedURL = String(urlString[uddgRange.upperBound...])
-                            if let ampRange = encodedURL.range(of: "&") {
-                                encodedURL = String(encodedURL[..<ampRange.lowerBound])
-                            }
-                            if let decodedURL = encodedURL.removingPercentEncoding {
-                                urlString = decodedURL
-                            }
-                        }
-                    }
-                    
-                    // Ensure URL starts with http
-                    if !urlString.hasPrefix("http") {
-                        continue
-                    }
-                    
-                    guard !title.isEmpty,
-                          title.count > 2,
-                          isValidExternalURL(urlString),
-                          !seenURLs.contains(urlString) else {
-                        continue
-                    }
-                    
-                    seenURLs.insert(urlString)
-                    
-                    await MainActor.run {
-                        results.append(SearchResult(title: title, url: urlString, description: ""))
-                    }
-                    
-                    if results.count >= Configuration.maxResults {
-                        break
-                    }
-                }
-                
-                if !results.isEmpty {
-                    break
-                }
-                
-            } catch {
-                logger.warning("⚠️ Pattern Fehler: \(error)")
+            if !results.isEmpty {
+                break
             }
         }
         
-        logger.debug("🔎 DuckDuckGo HTML geparst: \(results.count) Ergebnisse")
+        return results
+    }
+    
+    // MARK: - DuckDuckGo Lite Search
+    
+    private func searchDuckDuckGoLite(query: String) async throws -> [SearchResult] {
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw SearchError.invalidQuery
+        }
         
-        if results.isEmpty {
-            throw SearchError.noResults
+        let urlString = "https://lite.duckduckgo.com/lite/?q=\(encodedQuery)"
+        guard let url = URL(string: urlString) else {
+            throw SearchError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(Configuration.userAgents.randomElement()!, forHTTPHeaderField: "User-Agent")
+        
+        logger.debug("📤 DuckDuckGo Lite Request: \(url.absoluteString)")
+        
+        // Retry logic für 202 Status
+        for attempt in 0..<Configuration.maxRetries {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SearchError.networkError(NSError(domain: "HTTP", code: -1))
+            }
+            
+            logger.debug("📥 DuckDuckGo Lite Status: \(httpResponse.statusCode) (Attempt \(attempt + 1))")
+            
+            if httpResponse.statusCode == 202 {
+                if attempt < Configuration.maxRetries - 1 {
+                    try await Task.sleep(nanoseconds: Configuration.retryDelay)
+                    continue
+                }
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                throw SearchError.networkError(NSError(domain: "HTTP", code: httpResponse.statusCode))
+            }
+            
+            guard let html = String(data: data, encoding: .utf8) else {
+                throw SearchError.parsingError
+            }
+            
+            return parseDuckDuckGoLiteResults(html: html)
+        }
+        
+        throw SearchError.noResults
+    }
+    
+    private func parseDuckDuckGoLiteResults(html: String) -> [SearchResult] {
+        var results: [SearchResult] = []
+        var seenURLs = Set<String>()
+        
+        // Pattern für DuckDuckGo Lite result-link
+        let pattern = "<a\\s+rel=\"nofollow\"\\s+href=\"([^\"]+)\"[^>]*class=['\"]result-link['\"]>([^<]+)</a>"
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return results
+        }
+        
+        let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
+        let matches = regex.matches(in: html, options: [], range: nsRange)
+        
+        for match in matches {
+            guard match.numberOfRanges >= 3,
+                  let urlRange = Range(match.range(at: 1), in: html),
+                  let titleRange = Range(match.range(at: 2), in: html) else {
+                continue
+            }
+            
+            var urlString = String(html[urlRange])
+            let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Skip ads
+            if urlString.contains("ad_domain") || urlString.contains("ad_provider") {
+                continue
+            }
+            
+            // Handle DuckDuckGo redirects
+            if urlString.contains("duckduckgo.com/l/?uddg=") {
+                if let uddgRange = urlString.range(of: "uddg=") {
+                    var encodedURL = String(urlString[uddgRange.upperBound...])
+                    if let ampRange = encodedURL.range(of: "&") {
+                        encodedURL = String(encodedURL[..<ampRange.lowerBound])
+                    }
+                    if let decodedURL = encodedURL.removingPercentEncoding,
+                       decodedURL.hasPrefix("http") {
+                        urlString = decodedURL
+                    } else {
+                        continue
+                    }
+                } else {
+                    continue
+                }
+            } else if urlString.hasPrefix("//") {
+                urlString = "https:" + urlString
+            } else if urlString.hasPrefix("/") && !urlString.hasPrefix("//") {
+                continue
+            } else if !urlString.hasPrefix("http") {
+                continue
+            }
+            
+            guard !title.isEmpty,
+                  title.count > 2,
+                  !title.contains("more info"),
+                  isValidExternalURL(urlString),
+                  !seenURLs.contains(urlString) else {
+                continue
+            }
+            
+            seenURLs.insert(urlString)
+            
+            results.append(SearchResult(
+                title: title,
+                url: urlString,
+                description: "",
+                contentType: .web
+            ))
+            
+            if results.count >= Configuration.maxResults {
+                break
+            }
         }
         
         return results
     }
     
-    // MARK: - Google Search
+    // MARK: - Image Search
     
-    private func searchGoogle(query: String) async throws -> [SearchResult] {
-        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "\(Configuration.googleURL)?q=\(encodedQuery)&hl=de&num=\(Configuration.maxResults)") else {
-            throw SearchError.invalidURL
+    /// Führt eine Bilder-Suche durch
+    func searchImages(query: String) async throws -> [SearchResult] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedQuery.isEmpty else {
+            throw SearchError.invalidQuery
         }
         
-        logger.debug("📤 Google Request: \(url.absoluteString)")
+        logger.info("🖼️ Bildersuche für: \(trimmedQuery)")
+        
+        // Prüfe ob Google API konfiguriert ist
+        if APIConfiguration.isGoogleSearchConfigured {
+            do {
+                let results = try await searchGoogleImages(query: trimmedQuery)
+                if !results.isEmpty {
+                    return results
+                }
+            } catch {
+                logger.warning("⚠️ Google Images fehlgeschlagen: \(error.localizedDescription)")
+            }
+        }
+        
+        // Fallback: Unsplash
+        logger.info("🔄 Verwende Unsplash Fallback für Bilder")
+        return await searchUnsplashImages(query: trimmedQuery)
+    }
+    
+    private func searchGoogleImages(query: String) async throws -> [SearchResult] {
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw SearchError.invalidQuery
+        }
+        
+        let urlString = "\(APIConfiguration.Endpoints.googleCustomSearch)?key=\(APIConfiguration.googleAPIKey)&cx=\(APIConfiguration.googleSearchEngineID)&q=\(encodedQuery)&searchType=image&num=20&safe=moderate"
+        
+        guard let url = URL(string: urlString) else {
+            throw SearchError.invalidURL
+        }
         
         let (data, response) = try await session.data(from: url)
         
@@ -429,93 +402,162 @@ actor SearchService {
             throw SearchError.networkError(NSError(domain: "HTTP", code: -1))
         }
         
-        logger.debug("📥 Google Status: \(httpResponse.statusCode)")
-        
-        guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 429 {
-                throw SearchError.rateLimited
-            }
+        if httpResponse.statusCode == 429 {
+            throw SearchError.rateLimited
+        } else if httpResponse.statusCode == 403 {
+            throw SearchError.apiQuotaExceeded
+        } else if httpResponse.statusCode != 200 {
             throw SearchError.networkError(NSError(domain: "HTTP", code: httpResponse.statusCode))
         }
         
-        guard let html = String(data: data, encoding: .utf8) else {
-            throw SearchError.parsingError
+        let searchResponse = try JSONDecoder().decode(GoogleSearchResponse.self, from: data)
+        
+        guard let items = searchResponse.items, !items.isEmpty else {
+            return []
         }
         
-        logger.debug("📄 HTML Länge: \(html.count) Zeichen")
-        
-        return try await parseGoogleResults(html: html)
-    }
-
-    private func parseGoogleResults(html: String) async throws -> [SearchResult] {
-        var results: [SearchResult] = []
-        var seenURLs = Set<String>()
-
-        // Try multiple patterns for Google search results
-        let patterns = [
-            "<a href=\"/url\\?q=([^&\"]+)[^\"]*\"[^>]*><h3[^>]*>(.*?)</h3></a>",
-            "<a[^>]*href=\"/url\\?q=([^&\"]+)[^\"]*\"[^>]*>.*?<h3[^>]*>(.*?)</h3>",
-            "<a[^>]*href=\"(https?://[^\"]+)\"[^>]*><h3[^>]*>(.*?)</h3></a>",
-            "<h3[^>]*><a[^>]*href=\"/url\\?q=([^&\"]+)[^\"]*\"[^>]*>(.*?)</a></h3>"
-        ]
-        
-        for (index, pattern) in patterns.enumerated() {
-            do {
-                let regex = try NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
-                let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
-                let matches = regex.matches(in: html, options: [], range: nsRange)
-
-                logger.debug("🔍 Google Pattern \(index + 1): \(matches.count) matches found")
-
-                for match in matches {
-                    guard match.numberOfRanges >= 3,
-                          let urlRange = Range(match.range(at: 1), in: html),
-                          let titleRange = Range(match.range(at: 2), in: html) else {
-                        continue
-                    }
-
-                    var urlString = String(html[urlRange])
-                    let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
-                    
-                    if let decodedURL = urlString.removingPercentEncoding {
-                        urlString = decodedURL
-                    }
-                    
-                    if let range = urlString.range(of: "&sa=") {
-                        urlString = String(urlString[..<range.lowerBound])
-                    }
-
-                    guard !title.isEmpty,
-                          title.count > 3,
-                          isValidExternalURL(urlString),
-                          !seenURLs.contains(urlString) else {
-                        continue
-                    }
-
-                    seenURLs.insert(urlString)
-                    await MainActor.run {
-                        results.append(SearchResult(title: title, url: urlString, description: ""))
-                    }
-
-                    if results.count >= Configuration.maxResults {
-                        break
-                    }
-                }
-                
-                if !results.isEmpty {
-                    logger.debug("✅ Google Pattern \(index + 1) erfolgreich: \(results.count) Ergebnisse")
-                    break
-                }
-                
-            } catch {
-                logger.warning("⚠️ Google Pattern \(index + 1) Fehler: \(error)")
-            }
+        let results: [SearchResult] = items.map { item in
+            SearchResult(
+                title: item.title,
+                url: item.image?.contextLink ?? item.link,
+                description: item.snippet ?? "",
+                contentType: .image,
+                thumbnailURL: item.image?.thumbnailLink ?? item.link,
+                imageWidth: item.image?.width,
+                imageHeight: item.image?.height,
+                source: "Google Images"
+            )
         }
         
-        logger.debug("🔎 Google geparst: \(results.count) Ergebnisse")
+        logger.info("✅ Google Images: \(results.count) Ergebnisse")
         return results
     }
-
+    
+    private func searchUnsplashImages(query: String) async -> [SearchResult] {
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return []
+        }
+        
+        var results: [SearchResult] = []
+        
+        for i in 1...12 {
+            let imageURL = "https://source.unsplash.com/800x600/?\(encodedQuery)&sig=\(i)"
+            let thumbnailURL = "https://source.unsplash.com/400x300/?\(encodedQuery)&sig=\(i)"
+            
+            results.append(SearchResult(
+                title: "\(query) - Bild \(i)",
+                url: imageURL,
+                description: "Bild von Unsplash zu '\(query)'",
+                contentType: .image,
+                thumbnailURL: thumbnailURL,
+                imageWidth: 800,
+                imageHeight: 600,
+                source: "Unsplash"
+            ))
+        }
+        
+        logger.info("✅ Unsplash: \(results.count) Bilder")
+        return results
+    }
+    
+    // MARK: - Video Search
+    
+    /// Führt eine Video-Suche durch (YouTube)
+    func searchVideos(query: String) async throws -> [SearchResult] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedQuery.isEmpty else {
+            throw SearchError.invalidQuery
+        }
+        
+        logger.info("🎥 YouTube-Suche für: \(trimmedQuery)")
+        
+        guard APIConfiguration.isYouTubeConfigured else {
+            logger.warning("⚠️ YouTube API nicht konfiguriert")
+            return []
+        }
+        
+        return try await searchYouTubeVideos(query: trimmedQuery)
+    }
+    
+    private func searchYouTubeVideos(query: String) async throws -> [SearchResult] {
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw SearchError.invalidQuery
+        }
+        
+        let urlString = "\(APIConfiguration.Endpoints.youtubeSearch)?part=snippet&maxResults=20&q=\(encodedQuery)&type=video&key=\(APIConfiguration.youtubeAPIKey)&safeSearch=moderate&relevanceLanguage=de"
+        
+        guard let url = URL(string: urlString) else {
+            throw SearchError.invalidURL
+        }
+        
+        let (data, response) = try await session.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SearchError.networkError(NSError(domain: "HTTP", code: -1))
+        }
+        
+        if httpResponse.statusCode == 429 {
+            throw SearchError.rateLimited
+        } else if httpResponse.statusCode == 403 {
+            throw SearchError.apiQuotaExceeded
+        } else if httpResponse.statusCode != 200 {
+            throw SearchError.networkError(NSError(domain: "HTTP", code: httpResponse.statusCode))
+        }
+        
+        let searchResponse = try JSONDecoder().decode(YouTubeSearchResponse.self, from: data)
+        
+        guard let items = searchResponse.items, !items.isEmpty else {
+            return []
+        }
+        
+        let results: [SearchResult] = items.compactMap { item in
+            guard let videoId = item.id.videoId else { return nil }
+            
+            let videoURL = "https://www.youtube.com/watch?v=\(videoId)"
+            let thumbnailURL = item.snippet.thumbnails.medium?.url ??
+                               item.snippet.thumbnails.high?.url ??
+                               item.snippet.thumbnails.default?.url
+            
+            return SearchResult(
+                title: item.snippet.title,
+                url: videoURL,
+                description: item.snippet.description,
+                contentType: .video,
+                thumbnailURL: thumbnailURL,
+                source: "YouTube"
+            )
+        }
+        
+        logger.info("✅ YouTube: \(results.count) Videos")
+        return results
+    }
+    
+    // MARK: - Wikipedia Search
+    
+    func searchWikipedia(query: String) async throws -> WikipediaInfo? {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedQuery.isEmpty else {
+            return nil
+        }
+        
+        logger.info("📖 Wikipedia-Suche für: \(trimmedQuery)")
+        
+        let wikipediaService = WikipediaService()
+        
+        do {
+            if let info = try await wikipediaService.searchWikipedia(query: trimmedQuery) {
+                wikipediaInfos[info.articleURL] = info
+                return info
+            }
+        } catch {
+            logger.warning("⚠️ Wikipedia fehlgeschlagen: \(error.localizedDescription)")
+        }
+        
+        return nil
+    }
+    
     // MARK: - Helper Methods
     
     private func isValidExternalURL(_ url: String) -> Bool {
@@ -540,7 +582,7 @@ actor SearchService {
         
         return true
     }
-
+    
     private func removingHTMLTags(from string: String) -> String {
         return string.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression, range: nil)
             .replacingOccurrences(of: "&amp;", with: "&")
@@ -548,26 +590,38 @@ actor SearchService {
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&quot;", with: "\"")
             .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
     }
     
-    private func debugHTMLStructure(html: String, source: String) {
-        logger.debug("🔍 HTML Debug für \(source):")
+    private func extractDescription(for url: String, from html: String) -> String {
+        // Versuche die Beschreibung für eine URL zu finden
+        // DuckDuckGo hat result__snippet Klasse für Beschreibungen
+        let pattern = "class=\"result__snippet[^\"]*\"[^>]*>([^<]+)</[^>]+>"
         
-        do {
-            let linkRegex = try NSRegularExpression(pattern: "<a[^>]*href[^>]*>[^<]*</a>", options: .caseInsensitive)
-            let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
-            let matches = linkRegex.matches(in: html, options: [], range: nsRange)
-            
-            logger.debug("📋 Gefundene Links: \(matches.count)")
-            
-            for (index, match) in matches.prefix(5).enumerated() {
-                if let range = Range(match.range, in: html) {
-                    let linkHTML = String(html[range])
-                    logger.debug("🔗 Link \(index + 1): \(linkHTML)")
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return ""
+        }
+        
+        let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
+        let matches = regex.matches(in: html, options: [], range: nsRange)
+        
+        for match in matches {
+            if match.numberOfRanges >= 2,
+               let descRange = Range(match.range(at: 1), in: html) {
+                let description = removingHTMLTags(from: String(html[descRange]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !description.isEmpty && description.count > 10 {
+                    return description
                 }
             }
-        } catch {
-            logger.error("❌ Debug Regex Fehler: \(error)")
         }
+        
+        return ""
+    }
+    
+    // MARK: - Wikipedia Info Access
+    
+    func getWikipediaInfo(for url: String) -> WikipediaInfo? {
+        return wikipediaInfos[url]
     }
 }

@@ -1,0 +1,18 @@
+# Xcode
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+build/
+DerivedData/
+
+# macOS
+.DS_Store
+
+# Backend
+backend/.env
+backend/node_modules/
+backend/.netlify/
+
+# Logs
+*.log
+npm-debug.log*

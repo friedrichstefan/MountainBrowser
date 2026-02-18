@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import AVKit
 
 // MARK: - tvOS Design Constants (Apple HIG)
 
@@ -93,7 +94,18 @@ struct MainBrowserView: View {
     @Environment(\.modelContext) private var modelContext
     
     @State private var selectedResult: SearchResult?
+    @State private var selectedContentType: SearchContentType = .web
+    @State private var showVideoPlayer: Bool = false
+    @State private var videoPlayerURL: URL?
     @FocusState private var isSearchFocused: Bool
+    @FocusState private var focusedSection: FocusSection?
+    
+    enum FocusSection: Hashable {
+        case searchBar
+        case wikipediaPanel
+        case searchResults
+        case tabBar
+    }
     
     var body: some View {
         ZStack {
@@ -124,15 +136,101 @@ struct MainBrowserView: View {
             searchViewModel.modelContext = modelContext
         }
         .fullScreenCover(item: $selectedResult) { result in
-            FullscreenWebView(
-                url: result.url,
-                title: result.title,
-                isPresented: .init(
-                    get: { selectedResult != nil },
-                    set: { if !$0 { selectedResult = nil } }
+            // Unterscheide zwischen Video und anderen Inhalten
+            if result.contentType == .video, let videoURL = extractVideoURL(from: result) {
+                // Native Video Player für Videos
+                NativeVideoPlayerView(
+                    url: videoURL,
+                    title: result.title,
+                    isPresented: .init(
+                        get: { selectedResult != nil },
+                        set: { if !$0 { selectedResult = nil } }
+                    )
                 )
-            )
+            } else {
+                // WebView für andere Inhalte
+                FullscreenWebView(
+                    url: result.url,
+                    title: result.title,
+                    isPresented: .init(
+                        get: { selectedResult != nil },
+                        set: { if !$0 { selectedResult = nil } }
+                    )
+                )
+            }
         }
+    }
+    
+    // MARK: - Video URL Extraction
+    
+    /// Extrahiert die Video-URL für den nativen Player
+    private func extractVideoURL(from result: SearchResult) -> URL? {
+        let urlString = result.url
+        
+        // YouTube Video ID extrahieren
+        if urlString.contains("youtube.com/watch") || urlString.contains("youtu.be") {
+            if let videoId = extractYouTubeVideoID(from: urlString) {
+                // Verwende YouTube Embed URL für bessere Kompatibilität
+                // Hinweis: Direkte YouTube-Streams erfordern youtube-dl oder ähnliches
+                // Für tvOS verwenden wir die Embed-URL
+                let embedURL = "https://www.youtube.com/embed/\(videoId)?autoplay=1&playsinline=1"
+                return URL(string: embedURL)
+            }
+        }
+        
+        // Direkte Video-URLs (.mp4, .m3u8, etc.)
+        let videoExtensions = [".mp4", ".m3u8", ".mov", ".webm", ".mkv"]
+        for ext in videoExtensions {
+            if urlString.lowercased().contains(ext) {
+                return URL(string: urlString)
+            }
+        }
+        
+        // Vimeo
+        if urlString.contains("vimeo.com") {
+            // Vimeo benötigt API-Zugriff für direkte Video-URL
+            return URL(string: urlString)
+        }
+        
+        return nil
+    }
+    
+    /// Extrahiert die YouTube Video ID aus verschiedenen URL-Formaten
+    private func extractYouTubeVideoID(from urlString: String) -> String? {
+        // Format: youtube.com/watch?v=VIDEO_ID
+        if let url = URL(string: urlString),
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let queryItems = components.queryItems,
+           let videoId = queryItems.first(where: { $0.name == "v" })?.value {
+            return videoId
+        }
+        
+        // Format: youtu.be/VIDEO_ID
+        if urlString.contains("youtu.be/") {
+            let parts = urlString.components(separatedBy: "youtu.be/")
+            if parts.count > 1 {
+                var videoId = parts[1]
+                // Entferne Query-Parameter
+                if let queryIndex = videoId.firstIndex(of: "?") {
+                    videoId = String(videoId[..<queryIndex])
+                }
+                return videoId
+            }
+        }
+        
+        // Format: youtube.com/embed/VIDEO_ID
+        if urlString.contains("youtube.com/embed/") {
+            let parts = urlString.components(separatedBy: "youtube.com/embed/")
+            if parts.count > 1 {
+                var videoId = parts[1]
+                if let queryIndex = videoId.firstIndex(of: "?") {
+                    videoId = String(videoId[..<queryIndex])
+                }
+                return videoId
+            }
+        }
+        
+        return nil
     }
     
     // MARK: - Content View
@@ -143,7 +241,7 @@ struct MainBrowserView: View {
             loadingView
         } else if let error = searchViewModel.errorMessage {
             errorView(error)
-        } else if searchViewModel.hasResults {
+        } else if searchViewModel.hasResults || searchViewModel.hasImageResults || searchViewModel.hasVideoResults {
             resultsView
         } else {
             emptyStateView
@@ -168,14 +266,93 @@ struct MainBrowserView: View {
     // MARK: - Results View
     
     private var resultsView: some View {
-        SearchResultGridView(
-            results: searchViewModel.searchResults,
-            onSelect: { result in
-                print("📱 Suchergebnis ausgewählt: \(result.title)")
-                selectedResult = result
+        VStack(spacing: 0) {
+            // Tab-Leiste für Content-Type Auswahl
+            SearchTabBar(
+                selectedContentType: $selectedContentType,
+                onTabSelected: { contentType in
+                    print("📑 Tab ausgewählt: \(contentType.displayName)")
+                },
+                hasWikipediaInfo: searchViewModel.wikipediaInfo != nil
+            )
+            
+            // Content basierend auf ausgewähltem Tab
+            Group {
+                switch selectedContentType {
+                case .web:
+                    // Wikipedia Panel nur im "Alle" Tab inline anzeigen
+                    VStack(spacing: 0) {
+                        if let wikipediaInfo = searchViewModel.wikipediaInfo {
+                            WikipediaInfoPanel(
+                                wikipediaInfo: wikipediaInfo,
+                                onTap: {
+                                    print("📖 Wikipedia-Artikel öffnen: \(wikipediaInfo.articleURL)")
+                                    let wikipediaResult = SearchResult(
+                                        title: wikipediaInfo.title,
+                                        url: wikipediaInfo.articleURL,
+                                        description: wikipediaInfo.displaySummary,
+                                        contentType: .web
+                                    )
+                                    selectedResult = wikipediaResult
+                                }
+                            )
+                            .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
+                            .padding(.vertical, TVOSDesign.Spacing.elementSpacing)
+                        }
+                        
+                        SearchResultGridView(
+                            results: searchViewModel.searchResults,
+                            onSelect: { result in
+                                print("🌐 Web-Ergebnis ausgewählt: \(result.title)")
+                                selectedResult = result
+                            }
+                        )
+                    }
+                    
+                case .image:
+                    ImageResultGridView(
+                        results: searchViewModel.imageResults,
+                        onSelect: { result in
+                            print("🖼️ Bild-Ergebnis ausgewählt: \(result.title)")
+                            selectedResult = result
+                        }
+                    )
+                    
+                case .video:
+                    VideoResultGridView(
+                        results: searchViewModel.videoResults,
+                        onSelect: { result in
+                            print("🎥 Video-Ergebnis ausgewählt: \(result.title)")
+                            selectedResult = result
+                        }
+                    )
+                    
+                case .info:
+                    // Dedizierter Info-Tab mit WikipediaDetailView in ScrollView
+                    if let wikipediaInfo = searchViewModel.wikipediaInfo {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            WikipediaDetailView(
+                                wikipediaInfo: wikipediaInfo,
+                                onTap: {
+                                    print("📖 Wikipedia-Artikel öffnen: \(wikipediaInfo.articleURL)")
+                                    let wikipediaResult = SearchResult(
+                                        title: wikipediaInfo.title,
+                                        url: wikipediaInfo.articleURL,
+                                        description: wikipediaInfo.displaySummary,
+                                        contentType: .web
+                                    )
+                                    selectedResult = wikipediaResult
+                                }
+                            )
+                        }
+                        .padding(.horizontal, -TVOSDesign.Spacing.safeAreaHorizontal) // WikipediaDetailView hat eigenes Padding
+                    }
+                }
             }
-        )
+            .padding(.horizontal, -TVOSDesign.Spacing.safeAreaHorizontal) // Entferne doppelte Padding
+        }
     }
+    
     
     // MARK: - Error View
     
@@ -284,6 +461,135 @@ struct MainBrowserView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, TVOSDesign.Spacing.safeAreaTop)
+    }
+}
+
+// MARK: - Native Video Player View
+
+struct NativeVideoPlayerView: View {
+    let url: URL
+    let title: String
+    @Binding var isPresented: Bool
+    
+    @State private var player: AVPlayer?
+    @State private var isLoading: Bool = true
+    @State private var errorMessage: String?
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            if let player = player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+                    .onAppear {
+                        player.play()
+                    }
+                    .onDisappear {
+                        player.pause()
+                    }
+            } else if isLoading {
+                // Loading State
+                VStack(spacing: 24) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(2.0)
+                    
+                    Text("Video wird geladen...")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(.white)
+                    
+                    Text(title)
+                        .font(.system(size: 18))
+                        .foregroundColor(.gray)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+            } else if let error = errorMessage {
+                // Error State
+                VStack(spacing: 24) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.orange)
+                    
+                    Text("Video kann nicht abgespielt werden")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.white)
+                    
+                    Text(error)
+                        .font(.system(size: 18))
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                    
+                    Text("YouTube-Videos können auf tvOS nicht direkt abgespielt werden.\nDas Video wird im Browser geöffnet.")
+                        .font(.system(size: 16))
+                        .foregroundColor(.gray.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                        .padding(.top, 20)
+                    
+                    Button(action: {
+                        isPresented = false
+                    }) {
+                        Text("Zurück")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 40)
+                            .padding(.vertical, 16)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                    }
+                    .padding(.top, 20)
+                }
+            }
+        }
+        .onAppear {
+            loadVideo()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+        // Menü-Taste zum Schließen
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            player?.pause()
+        }
+    }
+    
+    private func loadVideo() {
+        isLoading = true
+        errorMessage = nil
+        
+        // Prüfe ob es eine direkte Video-URL ist
+        let urlString = url.absoluteString
+        
+        if urlString.contains("youtube.com") || urlString.contains("youtu.be") {
+            // YouTube-Videos können nicht direkt in AVPlayer abgespielt werden
+            // Zeige Fehlermeldung und biete WebView als Alternative
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                isLoading = false
+                errorMessage = "YouTube-Videos erfordern die YouTube-App oder einen Browser."
+            }
+            return
+        }
+        
+        // Für direkte Video-URLs (MP4, M3U8, etc.)
+        let playerItem = AVPlayerItem(url: url)
+        let newPlayer = AVPlayer(playerItem: playerItem)
+        
+        // Beobachte den Player-Status
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { _ in
+            isPresented = false
+        }
+        
+        self.player = newPlayer
+        isLoading = false
     }
 }
 
