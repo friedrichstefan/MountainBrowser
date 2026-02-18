@@ -110,13 +110,13 @@ struct EnhancedSearchBar: View {
         .overlay(
             RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
                 .stroke(
-                    isSearchFieldFocused ? Color.white : Color.clear,
+                    isSearchFieldFocused ? TVOSDesign.Colors.systemBlue : Color.clear,
                     lineWidth: 3
                 )
         )
         .scaleEffect(isSearchFieldFocused ? TVOSDesign.Focus.scale : 1.0)  // Verwendet Standard Focus Scale
         .shadow(
-            color: isSearchFieldFocused ? Color.white.opacity(0.3) : Color.clear,
+            color: isSearchFieldFocused ? TVOSDesign.Colors.focusGlow : Color.clear,
             radius: TVOSDesign.Focus.shadowRadius,
             y: 8
         )
@@ -133,11 +133,11 @@ struct EnhancedSearchBar: View {
             gradient: LinearGradient(
                 colors: searchQuery.isEmpty ? 
                     [TVOSDesign.Colors.tertiaryBackground, TVOSDesign.Colors.tertiaryBackground] :
-                    [Color.white, Color.white.opacity(0.8)],
+                    [TVOSDesign.Colors.systemBlue, TVOSDesign.Colors.systemBlue.opacity(0.8)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            foregroundWhenEnabled: .black
+            foregroundWhenEnabled: .white
         ) {
             performSearch()
         }
@@ -310,7 +310,7 @@ struct TVOSIconButton: View {
             )
             .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
             .shadow(
-                color: isFocused ? Color.white.opacity(0.4) : Color.clear,
+                color: isFocused ? TVOSDesign.Colors.focusGlow : Color.clear,
                 radius: TVOSDesign.Focus.shadowRadius,
                 y: 8
             )

@@ -228,22 +228,28 @@ struct TVOSSearchCard: View {
     // MARK: - Computed Properties
     
     private var gradientColors: [Color] {
-        // Generiere Farben basierend auf der Domain
+        // Generiere lebendige Farben basierend auf der Domain (Apple System Farben)
         let domain = domainFromURL.lowercased()
         
         if domain.contains("google") {
-            return [Color(red: 0.26, green: 0.52, blue: 0.96), Color(red: 0.18, green: 0.34, blue: 0.78)]
+            return [TVOSDesign.Colors.systemBlue, TVOSDesign.Colors.systemBlue.opacity(0.7)]
         } else if domain.contains("wikipedia") {
-            return [Color(white: 0.4), Color(white: 0.25)]
+            return [TVOSDesign.Colors.systemIndigo, TVOSDesign.Colors.systemIndigo.opacity(0.7)]
         } else if domain.contains("youtube") {
-            return [Color(red: 0.9, green: 0.2, blue: 0.2), Color(red: 0.7, green: 0.1, blue: 0.1)]
+            return [TVOSDesign.Colors.systemRed, TVOSDesign.Colors.systemRed.opacity(0.7)]
         } else if domain.contains("github") {
-            return [Color(white: 0.2), Color(white: 0.1)]
+            return [Color(white: 0.25), Color(white: 0.15)]
         } else if domain.contains("apple") {
-            return [Color(white: 0.3), Color(white: 0.15)]
+            return [Color(white: 0.3), Color(white: 0.18)]
+        } else if domain.contains("twitter") || domain.contains("x.com") {
+            return [TVOSDesign.Colors.systemTeal, TVOSDesign.Colors.systemTeal.opacity(0.7)]
+        } else if domain.contains("netflix") {
+            return [TVOSDesign.Colors.systemRed, Color(white: 0.1)]
+        } else if domain.contains("amazon") {
+            return [TVOSDesign.Colors.systemOrange, TVOSDesign.Colors.systemOrange.opacity(0.7)]
         } else {
-            // Default: Blau-Töne
-            return [TVOSDesign.Colors.accentBlue.opacity(0.8), TVOSDesign.Colors.accentBlue.opacity(0.5)]
+            // Default: System Teal für unbekannte Domains (statt langweiliges Weiß)
+            return [TVOSDesign.Colors.systemTeal, TVOSDesign.Colors.systemTeal.opacity(0.6)]
         }
     }
     

@@ -37,7 +37,7 @@ enum TVOSDesign {
         static let standardTouchTarget: CGFloat = 66  // tvOS HIG: Standard 66x66pt
     }
     
-    // Farben - tvOS System Farben
+    // Farben - tvOS System Farben nach Apple HIG
     enum Colors {
         static let background = Color(white: 0.05)
         static let secondaryBackground = Color(white: 0.1)
@@ -50,10 +50,18 @@ enum TVOSDesign {
         static let secondaryLabel = Color(white: 0.7)
         static let tertiaryLabel = Color(white: 0.5)
         
-        // Akzentfarben - Weiß als Standard für tvOS Tastatur-Kompatibilität
-        static let accentBlue = Color.white
-        static let accentOrange = Color(red: 1.0, green: 0.584, blue: 0.0)
-        static let focusGlow = Color.white.opacity(0.6)
+        // System Farben nach Apple Design (tvOS)
+        static let systemBlue = Color(red: 0.0, green: 0.478, blue: 1.0)      // #007AFF
+        static let systemGreen = Color(red: 0.205, green: 0.784, blue: 0.349) // #34C759
+        static let systemOrange = Color(red: 1.0, green: 0.584, blue: 0.0)    // #FF9500
+        static let systemRed = Color(red: 1.0, green: 0.231, blue: 0.188)     // #FF3B30
+        static let systemIndigo = Color(red: 0.345, green: 0.337, blue: 0.839) // #5856D6
+        static let systemTeal = Color(red: 0.357, green: 0.784, blue: 0.98)   // #5AC8FA
+        
+        // Akzentfarben - System Blue als Primary
+        static let accentBlue = systemBlue
+        static let accentOrange = systemOrange
+        static let focusGlow = systemBlue.opacity(0.6)
     }
     
     // Animation gemäß Apple tvOS HIG
@@ -147,7 +155,7 @@ struct MainBrowserView: View {
     private var loadingView: some View {
         VStack(spacing: TVOSDesign.Spacing.elementSpacing) {
             ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.systemBlue))
                 .scaleEffect(2.5)
             
             Text("Suche läuft...")

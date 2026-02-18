@@ -22,6 +22,14 @@ struct FullscreenWebView: View {
     @State private var canGoForward: Bool = false
     @State private var pageTitle: String = ""
     @State private var showNavigationBar: Bool = true
+    @State private var showHelpHint: Bool = true
+    
+    // Animationswerte für sanftes Verschwinden
+    @State private var helpHintOpacity: Double = 1.0
+    @State private var helpHintOffset: CGFloat = 0
+    @State private var helpHintScaleX: CGFloat = 1.0
+    @State private var helpHintScaleY: CGFloat = 1.0
+    @State private var helpHintBlur: CGFloat = 0
     
     // Shared WebView Controller
     @StateObject private var webViewController = WebViewScrollController()
@@ -41,8 +49,6 @@ struct FullscreenWebView: View {
                 showNavigationBar: $showNavigationBar,
                 scrollController: webViewController,
                 onMenuPress: {
-                    // Menü-Button: Wenn wir im WebView zurück gehen können, gehe zurück
-                    // Sonst wird die View automatisch durch fullScreenCover geschlossen
                     if canGoBack {
                         print("🔙 WebView goBack (canGoBack=true)")
                         webViewController.goBack()
@@ -52,7 +58,7 @@ struct FullscreenWebView: View {
                     }
                 },
                 onPlayPause: {
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8, blendDuration: 0.3)) {
                         showNavigationBar.toggle()
                     }
                 }
@@ -63,19 +69,29 @@ struct FullscreenWebView: View {
             // Navigationsleiste oben
             if showNavigationBar {
                 navigationBar
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity).animation(.spring(response: 0.6, dampingFraction: 0.8)),
+                            removal: .move(edge: .top).combined(with: .opacity).animation(.easeOut(duration: 0.4))
+                        )
+                    )
             }
             
             // Loading indicator
             if isLoading {
                 loadingIndicator
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)).animation(.spring(response: 0.4, dampingFraction: 0.7)))
             }
             
-            // Hilfe-Hinweis
-            if showNavigationBar {
+            // Hilfe-Hinweis mit weichem Verschwinde-Effekt
+            if showNavigationBar && showHelpHint {
                 VStack {
                     Spacer()
                     helpHint
+                        .opacity(helpHintOpacity)
+                        .offset(y: helpHintOffset)
+                        .scaleEffect(x: helpHintScaleX, y: helpHintScaleY)
+                        .blur(radius: helpHintBlur)
                         .padding(.bottom, 40)
                 }
             }
@@ -83,8 +99,66 @@ struct FullscreenWebView: View {
         .onAppear {
             urlString = url
             pageTitle = title.isEmpty ? url : title
+            
+            // Sanftes Verschwinden des Hilfe-Hinweises starten
+            startSmoothHelpHintFadeOut()
         }
-        .animation(.easeInOut(duration: 0.3), value: showNavigationBar)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showNavigationBar)
+    }
+    
+    // MARK: - Smooth Help Hint Fade Out Animation
+    
+    private func startSmoothHelpHintFadeOut() {
+        // Phase 1: Nach 5 Sekunden - sanftes Dimmen beginnt
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            withAnimation(.easeInOut(duration: 2.5)) {
+                helpHintOpacity = 0.7
+            }
+        }
+        
+        // Phase 2: Nach 7 Sekunden - weiter dimmen, leichter Blur
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
+            withAnimation(.easeInOut(duration: 2.0)) {
+                helpHintOpacity = 0.5
+                helpHintBlur = 1
+            }
+        }
+        
+        // Phase 3: Nach 9 Sekunden - horizontal zusammenziehen beginnt
+        DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
+            withAnimation(.easeInOut(duration: 1.5)) {
+                helpHintOpacity = 0.3
+                helpHintScaleX = 0.85
+                helpHintBlur = 3
+            }
+        }
+        
+        // Phase 4: Nach 10.5 Sekunden - stark zusammenziehen + nach unten gleiten
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.5) {
+            withAnimation(.spring(response: 1.0, dampingFraction: 0.6)) {
+                helpHintOpacity = 0.1
+                helpHintScaleX = 0.4
+                helpHintScaleY = 0.6
+                helpHintOffset = 60
+                helpHintBlur = 8
+            }
+        }
+        
+        // Phase 5: Nach 12 Sekunden - komplett verschwinden (zu einem Punkt)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+            withAnimation(.easeOut(duration: 0.6)) {
+                helpHintOpacity = 0
+                helpHintScaleX = 0.1
+                helpHintScaleY = 0.2
+                helpHintOffset = 80
+                helpHintBlur = 15
+            }
+            
+            // View entfernen nach Animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                showHelpHint = false
+            }
+        }
     }
     
     // MARK: - Navigation Bar
@@ -100,19 +174,12 @@ struct FullscreenWebView: View {
                 dismiss()
             }
             
-            // Seiten-Info
-            VStack(alignment: .leading, spacing: 6) {
-                Text(pageTitle.isEmpty ? "Laden..." : pageTitle)
-                    .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
-                    .foregroundColor(TVOSDesign.Colors.primaryLabel)
-                    .lineLimit(1)
-                
-                Text(urlString)
-                    .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
-                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Safari-Style URL Bar (zentriert)
+            SafariURLBar(
+                urlString: urlString,
+                pageTitle: pageTitle.isEmpty ? "Laden..." : pageTitle
+            )
+            .frame(maxWidth: .infinity)
             
             // Navigation Controls
             HStack(spacing: 16) {
@@ -206,6 +273,19 @@ struct FullscreenWebView: View {
     }
 }
 
+// MARK: - Smooth Animation Constants
+
+private enum SmoothAnimation {
+    // Weiche, natürliche Spring-Animationen
+    static let focusSpring = Animation.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2)
+    static let pressSpring = Animation.spring(response: 0.25, dampingFraction: 0.65, blendDuration: 0.1)
+    static let hoverSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0.15)
+    
+    // Geschmeidige Ease-Kurven
+    static let smoothEase = Animation.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.4)
+    static let gentleEase = Animation.timingCurve(0.4, 0.0, 0.2, 1.0, duration: 0.5)
+}
+
 // MARK: - tvOS Navigation Button Components
 
 struct TVOSNavButton: View {
@@ -216,15 +296,19 @@ struct TVOSNavButton: View {
     
     @FocusState private var isFocused: Bool
     @State private var isPressed: Bool = false
+    @State private var hoverScale: CGFloat = 1.0
     
     var body: some View {
         Button(action: {
             guard isEnabled else { return }
-            withAnimation(TVOSDesign.Animation.pressSpring) {
+            
+            // Geschmeidigere Press-Animation
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
                 isPressed = true
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(TVOSDesign.Animation.pressSpring) {
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                     isPressed = false
                 }
                 action()
@@ -245,20 +329,25 @@ struct TVOSNavButton: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(isFocused ? Color.white : Color.clear, lineWidth: 3)
+                    .stroke(isFocused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2.5)
             )
-            .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
+            .scaleEffect(isPressed ? 0.94 : (isFocused ? 1.06 : hoverScale))
             .shadow(
-                color: isFocused ? Color.white.opacity(0.4) : Color.clear,
-                radius: 15,
-                y: 5
+                color: isFocused ? Color.white.opacity(0.35) : Color.black.opacity(0.2),
+                radius: isFocused ? 20 : 8,
+                y: isFocused ? 8 : 4
             )
         }
         .buttonStyle(PlainButtonStyle())
         .focused($isFocused)
         .disabled(!isEnabled)
-        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
-        .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
+        .onChange(of: isFocused) { _, newValue in
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                hoverScale = newValue ? 1.0 : 1.0
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2), value: isFocused)
+        .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
     }
 }
 
@@ -273,11 +362,13 @@ struct TVOSNavIconButton: View {
     var body: some View {
         Button(action: {
             guard isEnabled else { return }
-            withAnimation(TVOSDesign.Animation.pressSpring) {
+            
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
                 isPressed = true
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(TVOSDesign.Animation.pressSpring) {
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                     isPressed = false
                 }
                 action()
@@ -293,20 +384,20 @@ struct TVOSNavIconButton: View {
                 )
                 .overlay(
                     Circle()
-                        .stroke(isFocused ? Color.white : Color.clear, lineWidth: 3)
+                        .stroke(isFocused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2.5)
                 )
-                .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
+                .scaleEffect(isPressed ? 0.92 : (isFocused ? 1.08 : 1.0))
                 .shadow(
-                    color: isFocused ? Color.white.opacity(0.4) : Color.clear,
-                    radius: 12,
-                    y: 4
+                    color: isFocused ? Color.white.opacity(0.35) : Color.black.opacity(0.15),
+                    radius: isFocused ? 16 : 6,
+                    y: isFocused ? 6 : 3
                 )
         }
         .buttonStyle(PlainButtonStyle())
         .focused($isFocused)
         .disabled(!isEnabled)
-        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
-        .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
+        .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2), value: isFocused)
+        .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
     }
 }
 
@@ -816,7 +907,167 @@ class WebViewHostController: UIViewController {
     }
 }
 
+// MARK: - Safari-Style URL Bar Component
+
+struct SafariURLBar: View {
+    let urlString: String
+    let pageTitle: String
+    
+    @FocusState private var isFocused: Bool
+    @State private var showTitle: Bool = false
+    @State private var contentOpacity: Double = 1.0
+    
+    private var isSecure: Bool {
+        urlString.hasPrefix("https://")
+    }
+    
+    private var displayURL: String {
+        extractDomain(from: urlString)
+    }
+    
+    var body: some View {
+        Button(action: {
+            // Sanfter Crossfade zwischen URL und Titel
+            withAnimation(.easeInOut(duration: 0.25)) {
+                contentOpacity = 0
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                showTitle.toggle()
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    contentOpacity = 1.0
+                }
+            }
+        }) {
+            HStack(spacing: 12) {
+                // Sicherheits-Icon (grün für HTTPS) mit sanfter Animation
+                Image(systemName: isSecure ? "lock.fill" : "lock.slash")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(isSecure ? TVOSDesign.Colors.systemGreen : TVOSDesign.Colors.tertiaryLabel)
+                    .animation(.easeInOut(duration: 0.3), value: isSecure)
+                
+                // URL oder Titel (umschaltbar) mit Crossfade
+                Text(showTitle ? pageTitle : displayURL)
+                    .font(.system(size: TVOSDesign.Typography.subheadline, weight: .medium))
+                    .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .opacity(contentOpacity)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 16)
+            .frame(minHeight: TVOSDesign.Spacing.minTouchTarget)
+            .background(
+                // Safari-Style Kapsel mit sanftem Übergang
+                Capsule()
+                    .fill(
+                        isFocused 
+                        ? TVOSDesign.Colors.focusedCardBackground
+                        : Color.white.opacity(0.15)
+                    )
+            )
+            .overlay(
+                // Focus-Rahmen (reduziert)
+                Capsule()
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.8) : Color.clear,
+                        lineWidth: 2
+                    )
+                    .padding(1) // Inset um Überlappung zu vermeiden
+            )
+            .scaleEffect(isFocused ? 1.05 : 1.0) // Reduzierte Skalierung
+            .shadow(
+                color: isFocused ? Color.white.opacity(0.3) : Color.black.opacity(0.2),
+                radius: isFocused ? 12 : 8,
+                y: isFocused ? 6 : 4
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2), value: isFocused)
+        .onAppear {
+            // Sanfter automatischer Wechsel zum Titel
+            if !pageTitle.isEmpty && pageTitle != "Laden..." {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        contentOpacity = 0
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        showTitle = true
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            contentOpacity = 1.0
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: pageTitle) { _, newTitle in
+            // Wenn Titel sich ändert (z.B. nach Laden), sanft aktualisieren
+            if !newTitle.isEmpty && newTitle != "Laden..." && !showTitle {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        contentOpacity = 0
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        showTitle = true
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            contentOpacity = 1.0
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    /// Extrahiert Domain aus URL String (ohne www. und Protokoll)
+    private func extractDomain(from urlString: String) -> String {
+        guard let url = URL(string: urlString) else {
+            return urlString
+        }
+        
+        var host = url.host ?? urlString
+        
+        // Entferne www. Präfix
+        if host.hasPrefix("www.") {
+            host = String(host.dropFirst(4))
+        }
+        
+        return host
+    }
+}
+
 #Preview {
+    ZStack {
+        TVOSDesign.Colors.background.ignoresSafeArea()
+        
+        VStack(spacing: 40) {
+            // HTTPS Beispiel
+            SafariURLBar(
+                urlString: "https://www.apple.com/de/tv-home/",
+                pageTitle: "Apple TV - Apple (DE)"
+            )
+            
+            // HTTP Beispiel (unsicher)
+            SafariURLBar(
+                urlString: "http://example.com/test",
+                pageTitle: "Test Page"
+            )
+            
+            // Laden-Status
+            SafariURLBar(
+                urlString: "https://www.google.com",
+                pageTitle: "Laden..."
+            )
+        }
+        .padding()
+    }
+}
+
+#Preview("Original WebView") {
     FullscreenWebView(
         url: "https://www.example.com",
         title: "Example",
