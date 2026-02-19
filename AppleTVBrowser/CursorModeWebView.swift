@@ -149,7 +149,7 @@ struct CursorModeWebView: View {
         .clipped()
     }
     
-    // MARK: - Actions (VERBESSERTE IMPLEMENTIERUNG)
+    // MARK: - Actions (KORRIGIERTE IMPLEMENTIERUNG)
     private func performCursorClick() {
         print("🎯 performCursorClick aufgerufen!")
         print("🎯 Cursor Position: \(cursorManager.position)")
@@ -160,76 +160,25 @@ struct CursorModeWebView: View {
             return 
         }
         
-        // Koordinaten für WebView berechnen (Header-Offset berücksichtigen)
-        let headerHeight: CGFloat = 61
-        let webViewRelativeX = cursorManager.position.x
-        let webViewRelativeY = cursorManager.position.y - headerHeight
-        
-        print("🎯 WebView relative Koordinaten: (\(webViewRelativeX), \(webViewRelativeY))")
-        
-        // JavaScript für Klick mit korrigierten Koordinaten
+        // KORREKTUR: Einfache Verwendung der window.performCursorClick Funktion
+        // Die Koordinaten-Umrechnung passiert bereits im JavaScript
         let script = """
-            console.log('🎯 JavaScript Klick ausgeführt bei (' + \(webViewRelativeX) + ', ' + \(webViewRelativeY) + ')');
+            console.log('🎯 JavaScript Klick wird ausgeführt');
             
-            // Element an der Position finden
-            var element = document.elementFromPoint(\(webViewRelativeX), \(webViewRelativeY));
-            console.log('🎯 Element gefunden:', element);
-            
-            if (element) {
-                console.log('🎯 Element Tag:', element.tagName);
-                console.log('🎯 Element Klassen:', element.className);
-                console.log('🎯 Element ID:', element.id);
-                
-                // Verschiedene Klick-Events erstellen
-                var clickEvent = new MouseEvent('click', {
-                    view: window,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: \(webViewRelativeX),
-                    clientY: \(webViewRelativeY),
-                    button: 0
-                });
-                
-                var mouseDownEvent = new MouseEvent('mousedown', {
-                    view: window,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: \(webViewRelativeX),
-                    clientY: \(webViewRelativeY),
-                    button: 0
-                });
-                
-                var mouseUpEvent = new MouseEvent('mouseup', {
-                    view: window,
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: \(webViewRelativeX),
-                    clientY: \(webViewRelativeY),
-                    button: 0
-                });
-                
-                // Events dispatchen
-                element.dispatchEvent(mouseDownEvent);
-                element.dispatchEvent(mouseUpEvent);
-                element.dispatchEvent(clickEvent);
-                
-                // Zusätzlich: native click() aufrufen falls möglich
-                if (typeof element.click === 'function') {
-                    element.click();
-                    console.log('🎯 Native click() aufgerufen');
-                }
-                
-                console.log('🎯 Alle Klick-Events gesendet');
-            } else {
-                console.log('❌ Kein Element an Position gefunden!');
-            }
-            
-            // Funktions-Check
             if (typeof window.performCursorClick === 'function') {
                 window.performCursorClick();
-                console.log('🎯 window.performCursorClick() aufgerufen');
+                console.log('✅ window.performCursorClick() erfolgreich aufgerufen');
             } else {
-                console.log('⚠️ window.performCursorClick nicht verfügbar');
+                console.log('❌ window.performCursorClick nicht verfügbar');
+                
+                // Fallback: Direkte Klick-Implementierung
+                var element = document.elementFromPoint(window.cursorX, window.cursorY);
+                if (element) {
+                    console.log('🎯 Fallback - Element gefunden:', element.tagName);
+                    element.click();
+                } else {
+                    console.log('❌ Fallback - Kein Element gefunden');
+                }
             }
         """
         
@@ -388,20 +337,30 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             // Create new timer with debounce
             coordinator.cursorUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { _ in
                 if let pendingPos = coordinator.pendingCursorPosition {
-                    // Get webview geometry
-                    let webViewBounds = webView.bounds
+                    // KORREKTE KOORDINATEN-TRANSFORMATION:
+                    // position = Screen-Koordinaten (absolut)
+                    // WebView braucht Koordinaten relativ zur WebView
+                    
+                    // Berechne WebView Frame in Screen-Koordinaten
                     let webViewFrame = webView.frame
+                    let webViewScreenFrame = webView.superview?.convert(webViewFrame, to: nil) ?? webViewFrame
                     
-                    // Convert from screen coordinates to WebView coordinates
-                    let headerHeight: CGFloat = 61
-                    let webViewRelativeX = pendingPos.x - webViewFrame.origin.x
-                    let webViewRelativeY = (pendingPos.y - headerHeight) - webViewFrame.origin.y
+                    // Transformiere absolute Screen-Koordinaten zu WebView-relativen Koordinaten
+                    let webViewRelativeX = pendingPos.x - webViewScreenFrame.origin.x
+                    let webViewRelativeY = pendingPos.y - webViewScreenFrame.origin.y
                     
-                    // Clamp to WebView bounds to prevent out-of-bounds coordinates
-                    let clampedX = max(0, min(webViewBounds.width, webViewRelativeX))
-                    let clampedY = max(0, min(webViewBounds.height, webViewRelativeY))
+                    print("🎯 COORDINATE TRANSFORM:")
+                    print("  Screen Position: (\(pendingPos.x), \(pendingPos.y))")
+                    print("  WebView Frame: \(webViewScreenFrame)")
+                    print("  WebView Relative: (\(webViewRelativeX), \(webViewRelativeY))")
+                    
+                    // Clamp zu WebView-Grenzen
+                    let clampedX = max(0, min(webViewFrame.width, webViewRelativeX))
+                    let clampedY = max(0, min(webViewFrame.height, webViewRelativeY))
                     
                     let finalPosition = CGPoint(x: clampedX, y: clampedY)
+                    print("  Final Position: (\(clampedX), \(clampedY))")
+                    
                     self.updateCursorPositionInJS(webView, position: finalPosition)
                     coordinator.pendingCursorPosition = nil
                 }

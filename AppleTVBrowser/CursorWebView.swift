@@ -88,14 +88,14 @@ struct CursorWebView: UIViewRepresentable {
     
     // MARK: - JavaScript Integration
     private func updateCursorPositionInJS(_ webView: UIView, position: CGPoint) {
-        // Convert coordinates considering the webview's frame and scale
-        let webViewFrame = webView.frame
-        let adjustedX = position.x - webViewFrame.origin.x
-        let adjustedY = position.y - webViewFrame.origin.y
-        
+        // Direkte Koordinaten verwenden - keine zusätzliche Umrechnung
+        // Die Position ist bereits relativ zur WebView
         let script = """
             if (typeof window.updateCursorPosition === 'function') {
-                window.updateCursorPosition(\(adjustedX), \(adjustedY));
+                window.updateCursorPosition(\(position.x), \(position.y));
+                console.log('🎯 Cursor Position in JS: (\(position.x), \(position.y))');
+            } else {
+                console.log('⚠️ window.updateCursorPosition nicht verfügbar');
             }
         """
         executeJavaScript(webView, script: script)
@@ -268,14 +268,16 @@ struct CursorWebView: UIViewRepresentable {
             'a.tvos-cursor-hover, button.tvos-cursor-hover, [onclick].tvos-cursor-hover {' +
                 'box-shadow: 0 0 12px rgba(0, 122, 255, 0.6) !important;' +
                 'outline-width: 3px !important;' +
+                'outline-offset: 3px !important;' +
             '}' +
             'input.tvos-cursor-hover, select.tvos-cursor-hover, textarea.tvos-cursor-hover {' +
                 'border: 2px solid #007AFF !important;' +
                 'box-shadow: 0 0 8px rgba(0, 122, 255, 0.5) !important;' +
+                'outline-offset: 2px !important;' +
             '}';
             document.head.appendChild(style);
             
-            console.log('tvOS Cursor CSS styles initialized with hover effects');
+            console.log('tvOS Cursor CSS styles initialized with corrected coordinate system');
         })();
     """
 }
