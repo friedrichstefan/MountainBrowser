@@ -2,7 +2,7 @@
 //  FullscreenWebView.swift
 //  AppleTVBrowser
 //
-//  Vollbild-WebView für tvOS mit MPRemoteCommandCenter
+//  Vollbild-WebView für tvOS mit ScrollView/CursorView Modi
 //
 
 import SwiftUI
@@ -15,6 +15,49 @@ struct FullscreenWebView: View {
     @Binding var isPresented: Bool
     
     @Environment(\.dismiss) private var dismiss
+    @State private var sessionManager = SessionManager()
+    
+    @State private var urlObject: URL?
+    @State private var showingSettings = false
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            Group {
+                switch sessionManager.preferences.viewMode {
+                case .scrollView:
+                    ScrollModeWebView(
+                        url: url,
+                        title: title,
+                        onBack: { dismiss() },
+                        onShowSettings: { showingSettings = true }
+                    )
+                case .cursorView:
+                    CursorModeWebView(
+                        url: $urlObject,
+                        preferences: sessionManager.preferences,
+                        onNavigationAction: { _ in true },
+                        onBack: { dismiss() }
+                    )
+                }
+            }
+        }
+        .onAppear {
+            urlObject = URL(string: url)
+        }
+        .sheet(isPresented: $showingSettings) {
+            BrowserSettingsView(sessionManager: sessionManager)
+        }
+    }
+}
+
+// MARK: - ScrollView Mode (Original Implementation)
+struct ScrollModeWebView: View {
+    let url: String
+    let title: String
+    let onBack: () -> Void
+    let onShowSettings: () -> Void
     
     @State private var urlString: String = ""
     @State private var isLoading: Bool = false
@@ -48,7 +91,7 @@ struct FullscreenWebView: View {
                     if canGoBack {
                         webViewController.goBack()
                     } else {
-                        dismiss()
+                        onBack()
                     }
                 },
                 onPlayPause: {
@@ -117,7 +160,7 @@ struct FullscreenWebView: View {
                 label: "Zurück",
                 isEnabled: true
             ) {
-                dismiss()
+                onBack()
             }
             
             SafariURLBar(
@@ -146,6 +189,14 @@ struct FullscreenWebView: View {
                     isEnabled: true
                 ) {
                     webViewController.reload()
+                }
+                
+                // Settings Button
+                TVOSNavIconButton(
+                    icon: "gearshape.fill",
+                    isEnabled: true
+                ) {
+                    onShowSettings()
                 }
             }
         }

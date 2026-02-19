@@ -8,6 +8,30 @@
 import Foundation
 import SwiftData
 
+/// Browser-Ansichtsmodus
+enum BrowserViewMode: String, Codable, CaseIterable {
+    case scrollView = "scroll"    // Standard Fokus-basierte Navigation
+    case cursorView = "cursor"    // Maus-Cursor basierte Navigation
+    
+    var displayName: String {
+        switch self {
+        case .scrollView:
+            return "Scroll View"
+        case .cursorView:
+            return "Cursor View"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .scrollView:
+            return "Standard-Navigation mit Fokus und Scroll"
+        case .cursorView:
+            return "Maus-Cursor Navigation mit Touchpad"
+        }
+    }
+}
+
 /// Browser-Einstellungen und Präferenzen
 @Model
 final class BrowserPreferences {
@@ -20,6 +44,7 @@ final class BrowserPreferences {
     var blockPopups: Bool
     var showTopNavigation: Bool
     var defaultZoom: Float
+    var viewMode: BrowserViewMode
     
     init(
         homepage: String = "https://www.google.com",
@@ -30,7 +55,8 @@ final class BrowserPreferences {
         enableJavaScript: Bool = true,
         blockPopups: Bool = true,
         showTopNavigation: Bool = true,
-        defaultZoom: Float = 1.0
+        defaultZoom: Float = 1.0,
+        viewMode: BrowserViewMode = .scrollView
     ) {
         self.homepage = homepage
         self.searchEngine = searchEngine
@@ -41,6 +67,7 @@ final class BrowserPreferences {
         self.blockPopups = blockPopups
         self.showTopNavigation = showTopNavigation
         self.defaultZoom = defaultZoom
+        self.viewMode = viewMode
     }
 }
 
@@ -85,6 +112,7 @@ final class SessionManager {
         static let blockPopups = "browser.blockPopups"
         static let showTopNavigation = "browser.showTopNavigation"
         static let defaultZoom = "browser.defaultZoom"
+        static let viewMode = "browser.viewMode"
     }
     
     init() {
@@ -98,7 +126,8 @@ final class SessionManager {
             enableJavaScript: UserDefaults.standard.object(forKey: Keys.enableJavaScript) as? Bool ?? true,
             blockPopups: UserDefaults.standard.object(forKey: Keys.blockPopups) as? Bool ?? true,
             showTopNavigation: UserDefaults.standard.object(forKey: Keys.showTopNavigation) as? Bool ?? true,
-            defaultZoom: UserDefaults.standard.object(forKey: Keys.defaultZoom) as? Float ?? 1.0
+            defaultZoom: UserDefaults.standard.object(forKey: Keys.defaultZoom) as? Float ?? 1.0,
+            viewMode: BrowserViewMode(rawValue: UserDefaults.standard.string(forKey: Keys.viewMode) ?? "scroll") ?? .scrollView
         )
     }
     
@@ -113,6 +142,7 @@ final class SessionManager {
         UserDefaults.standard.set(preferences.blockPopups, forKey: Keys.blockPopups)
         UserDefaults.standard.set(preferences.showTopNavigation, forKey: Keys.showTopNavigation)
         UserDefaults.standard.set(preferences.defaultZoom, forKey: Keys.defaultZoom)
+        UserDefaults.standard.set(preferences.viewMode.rawValue, forKey: Keys.viewMode)
     }
     
     /// Erstellt neue Session
