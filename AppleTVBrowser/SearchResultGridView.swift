@@ -10,11 +10,12 @@ import SwiftUI
 struct SearchResultGridView: View {
     let results: [SearchResult]
     let onSelect: (SearchResult) -> Void
+    var onScrollStarted: (() -> Void)? = nil
+    var onResetScroll: (() -> Void)? = nil
     
     @State private var focusedIndex: Int? = nil
+    @State private var hasScrolled: Bool = false
     
-    // 3-Spalten Grid-Layout gemäß tvOS HIG
-    // Horizontal: 40pt Spacing, Vertikal: 100pt Spacing
     private let columns = [
         GridItem(.flexible(), spacing: TVOSDesign.Spacing.gridHorizontalSpacing),
         GridItem(.flexible(), spacing: TVOSDesign.Spacing.gridHorizontalSpacing),
@@ -24,12 +25,10 @@ struct SearchResultGridView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                // Ergebnis-Header - immer über fokussierten Karten
                 resultsHeader
-                    .zIndex(2000)  // Header immer über fokussierten Karten (die haben zIndex 1000)
-                    .padding(.bottom, 60)  // Mehr Abstand zum Grid (60pt)
+                    .zIndex(2000)
+                    .padding(.bottom, 60)
                 
-                // Grid mit Karten - vertikales Spacing 100pt gemäß tvOS HIG
                 LazyVGrid(columns: columns, spacing: TVOSDesign.Spacing.gridVerticalSpacing) {
                     ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                         TVOSSearchCard(
@@ -39,6 +38,11 @@ struct SearchResultGridView: View {
                                 set: { newValue in
                                     if newValue {
                                         focusedIndex = index
+                                        // Wenn ein Element nach dem ersten fokussiert wird, InfoBox minimieren
+                                        if index > 0 && !hasScrolled {
+                                            hasScrolled = true
+                                            onScrollStarted?()
+                                        }
                                     } else if focusedIndex == index {
                                         focusedIndex = nil
                                     }
@@ -47,17 +51,23 @@ struct SearchResultGridView: View {
                         ) {
                             onSelect(result)
                         }
-                        .zIndex(focusedIndex == index ? 1000 : 0)  // Fokussierte Karte ganz oben
+                        .zIndex(focusedIndex == index ? 1000 : 0)
                     }
                 }
-                .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)  // Safe Area für Grid
+                .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
                 .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom)
             }
             .padding(.top, TVOSDesign.Spacing.elementSpacing)
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ResetScrollState"))) { _ in
+            hasScrolled = false
+        }
     }
     
-    // MARK: - Results Header
+    func resetScrollState() {
+        hasScrolled = false
+        onResetScroll?()
+    }
     
     private var resultsHeader: some View {
         HStack(alignment: .center, spacing: TVOSDesign.Spacing.elementSpacing) {
@@ -72,10 +82,8 @@ struct SearchResultGridView: View {
             }
             
             Spacer()
-            
-            // Sortier-Optionen könnten hier hinzugefügt werden
         }
-        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)  // Safe Area Padding
+        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
     }
 }
 
@@ -108,53 +116,42 @@ struct TVOSSearchCard: View {
         .onChange(of: isFocused) { _, newValue in
             isFocusedBinding = newValue
         }
-        // Focus-Effekt: Scale + Lift um Überlappen zu vermeiden
         .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
         .offset(y: isFocused ? -TVOSDesign.Focus.cardLiftOffset : 0)
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
         .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
     }
     
-    // MARK: - Card Content
-    
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Thumbnail/Preview Bereich
             thumbnailSection
-            
-            // Content Bereich
             contentSection
         }
-        .frame(minHeight: TVOSDesign.Spacing.standardTouchTarget)  // tvOS HIG: Standard 66pt Touch Target
+        .frame(minHeight: TVOSDesign.Spacing.standardTouchTarget)
         .background(
             RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
                 .fill(isFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
         )
         .shadow(
-            color: Color.black.opacity(isFocused ? 0.5 : 0.2),  // Neutraler Schatten ohne Orange
+            color: Color.black.opacity(isFocused ? 0.5 : 0.2),
             radius: isFocused ? TVOSDesign.Focus.shadowRadius : 8,
             y: isFocused ? 12 : 4
         )
     }
     
-    // MARK: - Thumbnail Section
-    
     private var thumbnailSection: some View {
         ZStack {
-            // Hintergrund-Gradient basierend auf URL
             LinearGradient(
                 colors: gradientColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             
-            // Website-Icon oder Favicon
             VStack(spacing: 12) {
                 Image(systemName: iconForResult)
                     .font(.system(size: 50, weight: .light))
                     .foregroundColor(.white.opacity(0.9))
                 
-                // Domain Badge
                 Text(domainFromURL)
                     .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
                     .foregroundColor(.white.opacity(0.8))
@@ -165,7 +162,6 @@ struct TVOSSearchCard: View {
                             .fill(Color.white.opacity(0.2))
                     )
             }
-            
         }
         .frame(height: 160)
         .clipShape(
@@ -178,18 +174,14 @@ struct TVOSSearchCard: View {
         )
     }
     
-    // MARK: - Content Section
-    
     private var contentSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Titel
             Text(result.title)
                 .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
                 .foregroundColor(isFocused ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.primaryLabel.opacity(0.9))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
             
-            // Beschreibung
             if !result.description.isEmpty {
                 Text(result.description)
                     .font(.system(size: TVOSDesign.Typography.footnote, weight: .regular))
@@ -200,7 +192,6 @@ struct TVOSSearchCard: View {
             
             Spacer(minLength: 8)
             
-            // URL und Action Hint
             HStack {
                 Text(truncatedURL)
                     .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
@@ -225,10 +216,7 @@ struct TVOSSearchCard: View {
         .frame(height: 140)
     }
     
-    // MARK: - Computed Properties
-    
     private var gradientColors: [Color] {
-        // Generiere lebendige Farben basierend auf der Domain (Apple System Farben)
         let domain = domainFromURL.lowercased()
         
         if domain.contains("google") {
@@ -248,7 +236,6 @@ struct TVOSSearchCard: View {
         } else if domain.contains("amazon") {
             return [TVOSDesign.Colors.systemOrange, TVOSDesign.Colors.systemOrange.opacity(0.7)]
         } else {
-            // Default: System Teal für unbekannte Domains (statt langweiliges Weiß)
             return [TVOSDesign.Colors.systemTeal, TVOSDesign.Colors.systemTeal.opacity(0.6)]
         }
     }
@@ -296,9 +283,8 @@ struct TVOSSearchCard: View {
         
         SearchResultGridView(
             results: SearchResult.examples,
-            onSelect: { result in
-                print("Selected: \(result.title)")
-            }
+            onSelect: { result in },
+            onScrollStarted: { }
         )
         .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
     }

@@ -180,7 +180,7 @@ actor WikipediaService {
             throw WikipediaError.invalidURL
         }
         
-        let urlString = "\(searchBaseURL)?action=query&format=json&list=search&srsearch=\(encodedQuery)&srlimit=1"
+        let urlString = "\(searchBaseURL)?action=query&format=json&list=search&srsearch=\(encodedQuery)&srlimit=3"
         
         guard let url = URL(string: urlString) else {
             throw WikipediaError.invalidURL
@@ -190,13 +190,43 @@ actor WikipediaService {
         
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let queryResult = json["query"] as? [String: Any],
-              let searchResults = queryResult["search"] as? [[String: Any]],
-              let firstResult = searchResults.first,
-              let title = firstResult["title"] as? String else {
+              let searchResults = queryResult["search"] as? [[String: Any]] else {
             return nil
         }
         
-        return title
+        // Prüfe mehrere Ergebnisse auf Relevanz
+        for result in searchResults {
+            guard let title = result["title"] as? String,
+                  let snippet = result["snippet"] as? String else {
+                continue
+            }
+            
+            // 1. Filtere Begriffsklärungsseiten aus
+            if isDisambiguationPage(title: title, snippet: snippet, language: language) {
+                print("⚠️ Wikipedia-Begriffsklärungsseite übersprungen: \(title)")
+                continue
+            }
+            
+            // 2. Prüfe Titel-Ähnlichkeit zur Suchanfrage
+            let similarity = calculateSimilarity(query: query, title: title)
+            if similarity < 0.3 {  // Mindest-Ähnlichkeit von 30%
+                print("⚠️ Wikipedia-Titel zu unterschiedlich (Ähnlichkeit: \(Int(similarity * 100))%): \(title)")
+                continue
+            }
+            
+            // 3. Prüfe ob Snippet ausreichend informativ ist
+            let cleanSnippet = cleanHTMLFromSnippet(snippet)
+            if cleanSnippet.count < 20 {
+                print("⚠️ Wikipedia-Snippet zu kurz: \(title)")
+                continue
+            }
+            
+            print("✅ Wikipedia-Artikel akzeptiert: \(title) (Ähnlichkeit: \(Int(similarity * 100))%)")
+            return title
+        }
+        
+        print("⚠️ Kein relevanter Wikipedia-Artikel für '\(query)' gefunden")
+        return nil
     }
     
     private func fetchPageDetails(pageTitle: String, language: String) async throws -> WikipediaInfo? {
@@ -249,6 +279,93 @@ actor WikipediaService {
             infoFields: infoFields,
             language: language
         )
+    }
+    
+    // MARK: - Helper Methods für Relevanzprüfung
+    
+    /// Prüft ob ein Wikipedia-Artikel eine Begriffsklärungsseite ist
+    private func isDisambiguationPage(title: String, snippet: String, language: String) -> Bool {
+        let lowercaseTitle = title.lowercased()
+        let lowercaseSnippet = snippet.lowercased()
+        
+        switch language {
+        case "de":
+            // Deutsche Begriffsklärungsmerkmale
+            return lowercaseTitle.contains("begriffsklärung") ||
+                   lowercaseTitle.contains("(begriffskl") ||
+                   lowercaseSnippet.contains("steht für:") ||
+                   lowercaseSnippet.contains("bezeichnet:") ||
+                   lowercaseSnippet.contains("kann bezeichnen") ||
+                   lowercaseSnippet.contains("ist eine begriffsklärung")
+        case "en":
+            // Englische Begriffsklärungsmerkmale
+            return lowercaseTitle.contains("disambiguation") ||
+                   lowercaseTitle.contains("(disambig") ||
+                   lowercaseSnippet.contains("may refer to:") ||
+                   lowercaseSnippet.contains("refers to:") ||
+                   lowercaseSnippet.contains("disambiguation page")
+        default:
+            return false
+        }
+    }
+    
+    /// Berechnet die Ähnlichkeit zwischen Suchanfrage und Wikipedia-Titel
+    private func calculateSimilarity(query: String, title: String) -> Double {
+        let normalizedQuery = normalizeString(query)
+        let normalizedTitle = normalizeString(title)
+        
+        // Exakte Übereinstimmung (nach Normalisierung)
+        if normalizedQuery == normalizedTitle {
+            return 1.0
+        }
+        
+        // Titel enthält die gesamte Suchanfrage
+        if normalizedTitle.contains(normalizedQuery) {
+            return 0.8
+        }
+        
+        // Wort-basierte Ähnlichkeit (Jaccard-Index)
+        let queryWords = Set(normalizedQuery.split(separator: " ").map(String.init))
+        let titleWords = Set(normalizedTitle.split(separator: " ").map(String.init))
+        
+        let intersection = queryWords.intersection(titleWords)
+        let union = queryWords.union(titleWords)
+        
+        if union.isEmpty {
+            return 0
+        }
+        
+        return Double(intersection.count) / Double(union.count)
+    }
+    
+    /// Normalisiert einen String für Vergleiche
+    private func normalizeString(_ string: String) -> String {
+        return string.lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "[^a-zA-Z0-9äöüß\\s]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+    }
+    
+    /// Entfernt HTML-Tags und -Entities aus Wikipedia-Snippets
+    private func cleanHTMLFromSnippet(_ snippet: String) -> String {
+        var cleaned = snippet
+        
+        // Entferne HTML-Tags
+        cleaned = cleaned.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        
+        // Dekodiere HTML-Entities
+        cleaned = cleaned.replacingOccurrences(of: "&amp;", with: "&")
+        cleaned = cleaned.replacingOccurrences(of: "&lt;", with: "<")
+        cleaned = cleaned.replacingOccurrences(of: "&gt;", with: ">")
+        cleaned = cleaned.replacingOccurrences(of: "&quot;", with: "\"")
+        cleaned = cleaned.replacingOccurrences(of: "&#39;", with: "'")
+        cleaned = cleaned.replacingOccurrences(of: "&nbsp;", with: " ")
+        
+        // Normalisiere Leerzeichen
+        cleaned = cleaned.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

@@ -29,13 +29,13 @@ enum TVOSDesign {
     enum Spacing {
         static let safeAreaTop: CGFloat = 60
         static let safeAreaBottom: CGFloat = 60
-        static let safeAreaHorizontal: CGFloat = 80  // tvOS HIG: 80pt horizontal safe area
-        static let gridHorizontalSpacing: CGFloat = 40  // tvOS HIG: 40pt horizontal grid spacing
-        static let gridVerticalSpacing: CGFloat = 100  // tvOS HIG: 100pt minimum vertical spacing
+        static let safeAreaHorizontal: CGFloat = 80
+        static let gridHorizontalSpacing: CGFloat = 40
+        static let gridVerticalSpacing: CGFloat = 100
         static let cardSpacing: CGFloat = 48
         static let elementSpacing: CGFloat = 24
-        static let minTouchTarget: CGFloat = 56  // tvOS HIG: Minimum 56x56pt
-        static let standardTouchTarget: CGFloat = 66  // tvOS HIG: Standard 66x66pt
+        static let minTouchTarget: CGFloat = 56
+        static let standardTouchTarget: CGFloat = 66
     }
     
     // Farben - tvOS System Farben nach Apple HIG
@@ -51,15 +51,13 @@ enum TVOSDesign {
         static let secondaryLabel = Color(white: 0.7)
         static let tertiaryLabel = Color(white: 0.5)
         
-        // System Farben nach Apple Design (tvOS)
-        static let systemBlue = Color(red: 0.0, green: 0.478, blue: 1.0)      // #007AFF
-        static let systemGreen = Color(red: 0.205, green: 0.784, blue: 0.349) // #34C759
-        static let systemOrange = Color(red: 1.0, green: 0.584, blue: 0.0)    // #FF9500
-        static let systemRed = Color(red: 1.0, green: 0.231, blue: 0.188)     // #FF3B30
-        static let systemIndigo = Color(red: 0.345, green: 0.337, blue: 0.839) // #5856D6
-        static let systemTeal = Color(red: 0.357, green: 0.784, blue: 0.98)   // #5AC8FA
+        static let systemBlue = Color(red: 0.0, green: 0.478, blue: 1.0)
+        static let systemGreen = Color(red: 0.205, green: 0.784, blue: 0.349)
+        static let systemOrange = Color(red: 1.0, green: 0.584, blue: 0.0)
+        static let systemRed = Color(red: 1.0, green: 0.231, blue: 0.188)
+        static let systemIndigo = Color(red: 0.345, green: 0.337, blue: 0.839)
+        static let systemTeal = Color(red: 0.357, green: 0.784, blue: 0.98)
         
-        // Akzentfarben - System Blue als Primary
         static let accentBlue = systemBlue
         static let accentOrange = systemOrange
         static let focusGlow = systemBlue.opacity(0.6)
@@ -72,20 +70,20 @@ enum TVOSDesign {
         static let transitionDuration: Double = 0.3
     }
     
-    // Focus-Effekte - optimiert um Überlappen zu vermeiden
+    // Focus-Effekte
     enum Focus {
-        static let scale: CGFloat = 1.03  // Reduziert von 1.05 um Überlappen zu vermeiden
+        static let scale: CGFloat = 1.03
         static let pressScale: CGFloat = 0.97
-        static let shadowRadius: CGFloat = 20  // Reduziert für bessere Trennung
+        static let shadowRadius: CGFloat = 20
         static let cornerRadius: CGFloat = 20
-        static let cardLiftOffset: CGFloat = 10  // Vertikaler Offset bei Fokus
+        static let cardLiftOffset: CGFloat = 10
     }
     
     // Grid-Layout gemäß tvOS HIG
     enum Grid {
         static let columnCount: Int = 3
-        static let unfocusedCardWidth: CGFloat = 160  // tvOS HIG: 160pt unfokussierte Breite
-        static let cardAspectRatio: CGFloat = 1.2  // Höhe = Breite * 1.2
+        static let unfocusedCardWidth: CGFloat = 160
+        static let cardAspectRatio: CGFloat = 1.2
     }
 }
 
@@ -95,8 +93,7 @@ struct MainBrowserView: View {
     
     @State private var selectedResult: SearchResult?
     @State private var selectedContentType: SearchContentType = .web
-    @State private var showVideoPlayer: Bool = false
-    @State private var videoPlayerURL: URL?
+    @State private var isInfoBoxExpanded: Bool = true
     @FocusState private var isSearchFocused: Bool
     @FocusState private var focusedSection: FocusSection?
     
@@ -107,27 +104,38 @@ struct MainBrowserView: View {
         case tabBar
     }
     
+    // MARK: - Computed Properties
+    
+    private var hasSearchResults: Bool {
+        searchViewModel.hasResults || searchViewModel.hasImageResults || searchViewModel.hasVideoResults || searchViewModel.wikipediaInfo != nil
+    }
+    
     var body: some View {
         ZStack {
-            // Hintergrund - tvOS Dark Appearance
             TVOSDesign.Colors.background
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Prominente Suchleiste
-                EnhancedSearchBar(
-                    searchQuery: $searchViewModel.searchQuery,
-                    isSearching: $searchViewModel.isSearching,
-                    searchHistory: searchViewModel.searchHistory,
-                    onSearch: {
-                        Task {
-                            await searchViewModel.performSearch()
-                        }
+            EnhancedSearchBar(
+                searchQuery: $searchViewModel.searchQuery,
+                isSearching: $searchViewModel.isSearching,
+                searchHistory: searchViewModel.searchHistory,
+                onSearch: {
+                    Task {
+                        await searchViewModel.performSearch()
                     }
-                )
+                },
+                onReset: {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        searchViewModel.resetToHomeState()
+                        selectedContentType = .web
+                        isInfoBoxExpanded = true
+                    }
+                },
+                hasResults: hasSearchResults
+            )
                 .zIndex(1)
                 
-                // Hauptinhaltsbereich mit Safe Area
                 contentView
                     .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
             }
@@ -135,10 +143,20 @@ struct MainBrowserView: View {
         .onAppear {
             searchViewModel.modelContext = modelContext
         }
+        .onExitCommand {
+            // tvOS Menu-Button Handler
+            if hasSearchResults {
+                // Wenn Suchergebnisse vorhanden sind, zurück zur Startseite
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    searchViewModel.resetToHomeState()
+                    selectedContentType = .web
+                    isInfoBoxExpanded = true
+                }
+            }
+            // Wenn keine Suchergebnisse vorhanden sind, standardmäßig App verlassen
+        }
         .fullScreenCover(item: $selectedResult) { result in
-            // Unterscheide zwischen Video und anderen Inhalten
             if result.contentType == .video, let videoURL = extractVideoURL(from: result) {
-                // Native Video Player für Videos
                 NativeVideoPlayerView(
                     url: videoURL,
                     title: result.title,
@@ -148,7 +166,6 @@ struct MainBrowserView: View {
                     )
                 )
             } else {
-                // WebView für andere Inhalte
                 FullscreenWebView(
                     url: result.url,
                     title: result.title,
@@ -163,22 +180,16 @@ struct MainBrowserView: View {
     
     // MARK: - Video URL Extraction
     
-    /// Extrahiert die Video-URL für den nativen Player
     private func extractVideoURL(from result: SearchResult) -> URL? {
         let urlString = result.url
         
-        // YouTube Video ID extrahieren
         if urlString.contains("youtube.com/watch") || urlString.contains("youtu.be") {
             if let videoId = extractYouTubeVideoID(from: urlString) {
-                // Verwende YouTube Embed URL für bessere Kompatibilität
-                // Hinweis: Direkte YouTube-Streams erfordern youtube-dl oder ähnliches
-                // Für tvOS verwenden wir die Embed-URL
                 let embedURL = "https://www.youtube.com/embed/\(videoId)?autoplay=1&playsinline=1"
                 return URL(string: embedURL)
             }
         }
         
-        // Direkte Video-URLs (.mp4, .m3u8, etc.)
         let videoExtensions = [".mp4", ".m3u8", ".mov", ".webm", ".mkv"]
         for ext in videoExtensions {
             if urlString.lowercased().contains(ext) {
@@ -186,18 +197,14 @@ struct MainBrowserView: View {
             }
         }
         
-        // Vimeo
         if urlString.contains("vimeo.com") {
-            // Vimeo benötigt API-Zugriff für direkte Video-URL
             return URL(string: urlString)
         }
         
         return nil
     }
     
-    /// Extrahiert die YouTube Video ID aus verschiedenen URL-Formaten
     private func extractYouTubeVideoID(from urlString: String) -> String? {
-        // Format: youtube.com/watch?v=VIDEO_ID
         if let url = URL(string: urlString),
            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
            let queryItems = components.queryItems,
@@ -205,12 +212,10 @@ struct MainBrowserView: View {
             return videoId
         }
         
-        // Format: youtu.be/VIDEO_ID
         if urlString.contains("youtu.be/") {
             let parts = urlString.components(separatedBy: "youtu.be/")
             if parts.count > 1 {
                 var videoId = parts[1]
-                // Entferne Query-Parameter
                 if let queryIndex = videoId.firstIndex(of: "?") {
                     videoId = String(videoId[..<queryIndex])
                 }
@@ -218,7 +223,6 @@ struct MainBrowserView: View {
             }
         }
         
-        // Format: youtube.com/embed/VIDEO_ID
         if urlString.contains("youtube.com/embed/") {
             let parts = urlString.components(separatedBy: "youtube.com/embed/")
             if parts.count > 1 {
@@ -267,33 +271,25 @@ struct MainBrowserView: View {
     
     private var resultsView: some View {
         VStack(spacing: 0) {
-            // Tab-Leiste für Content-Type Auswahl
             SearchTabBar(
                 selectedContentType: $selectedContentType,
-                onTabSelected: { contentType in
-                    print("📑 Tab ausgewählt: \(contentType.displayName)")
-                },
+                onTabSelected: { _ in },
                 hasWikipediaInfo: searchViewModel.wikipediaInfo != nil
             )
             
-            // Content basierend auf ausgewähltem Tab
             Group {
                 switch selectedContentType {
                 case .web:
-                    // Wikipedia Panel nur im "Alle" Tab inline anzeigen
                     VStack(spacing: 0) {
                         if let wikipediaInfo = searchViewModel.wikipediaInfo {
-                            WikipediaInfoPanel(
+                            CollapsibleWikipediaPanel(
                                 wikipediaInfo: wikipediaInfo,
+                                isExpanded: $isInfoBoxExpanded,
                                 onTap: {
-                                    print("📖 Wikipedia-Artikel öffnen: \(wikipediaInfo.articleURL)")
-                                    let wikipediaResult = SearchResult(
-                                        title: wikipediaInfo.title,
-                                        url: wikipediaInfo.articleURL,
-                                        description: wikipediaInfo.displaySummary,
-                                        contentType: .web
-                                    )
-                                    selectedResult = wikipediaResult
+                                    // Wechsel zum Info-Tab
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                        selectedContentType = .info
+                                    }
                                 }
                             )
                             .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
@@ -303,8 +299,12 @@ struct MainBrowserView: View {
                         SearchResultGridView(
                             results: searchViewModel.searchResults,
                             onSelect: { result in
-                                print("🌐 Web-Ergebnis ausgewählt: \(result.title)")
                                 selectedResult = result
+                            },
+                            onScrollStarted: {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    isInfoBoxExpanded = false
+                                }
                             }
                         )
                     }
@@ -313,7 +313,6 @@ struct MainBrowserView: View {
                     ImageResultGridView(
                         results: searchViewModel.imageResults,
                         onSelect: { result in
-                            print("🖼️ Bild-Ergebnis ausgewählt: \(result.title)")
                             selectedResult = result
                         }
                     )
@@ -322,19 +321,16 @@ struct MainBrowserView: View {
                     VideoResultGridView(
                         results: searchViewModel.videoResults,
                         onSelect: { result in
-                            print("🎥 Video-Ergebnis ausgewählt: \(result.title)")
                             selectedResult = result
                         }
                     )
                     
                 case .info:
-                    // Dedizierter Info-Tab mit WikipediaDetailView in ScrollView
                     if let wikipediaInfo = searchViewModel.wikipediaInfo {
                         ScrollView(.vertical, showsIndicators: false) {
                             WikipediaDetailView(
                                 wikipediaInfo: wikipediaInfo,
                                 onTap: {
-                                    print("📖 Wikipedia-Artikel öffnen: \(wikipediaInfo.articleURL)")
                                     let wikipediaResult = SearchResult(
                                         title: wikipediaInfo.title,
                                         url: wikipediaInfo.articleURL,
@@ -345,20 +341,18 @@ struct MainBrowserView: View {
                                 }
                             )
                         }
-                        .padding(.horizontal, -TVOSDesign.Spacing.safeAreaHorizontal) // WikipediaDetailView hat eigenes Padding
+                        .padding(.horizontal, -TVOSDesign.Spacing.safeAreaHorizontal)
                     }
                 }
             }
-            .padding(.horizontal, -TVOSDesign.Spacing.safeAreaHorizontal) // Entferne doppelte Padding
+            .padding(.horizontal, -TVOSDesign.Spacing.safeAreaHorizontal)
         }
     }
-    
     
     // MARK: - Error View
     
     private func errorView(_ error: String) -> some View {
         VStack(spacing: TVOSDesign.Spacing.cardSpacing) {
-            // Error Icon mit subtiler Animation
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 100))
                 .foregroundColor(TVOSDesign.Colors.accentOrange)
@@ -376,7 +370,6 @@ struct MainBrowserView: View {
                     .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
             }
             
-            // Retry Button mit tvOS Card Style
             TVOSButton(
                 title: "Erneut versuchen",
                 icon: "arrow.clockwise",
@@ -397,9 +390,7 @@ struct MainBrowserView: View {
         VStack(spacing: TVOSDesign.Spacing.cardSpacing) {
             Spacer()
             
-            // App-Logo mit Glow-Effekt
             ZStack {
-                // Glow Background
                 Circle()
                     .fill(Color.white.opacity(0.2))
                     .frame(width: 200, height: 200)
@@ -428,7 +419,6 @@ struct MainBrowserView: View {
                     .frame(maxWidth: 800)
             }
             
-            // Quick-Suggestions mit tvOS Card Style
             if !searchViewModel.searchHistory.isEmpty {
                 VStack(alignment: .leading, spacing: TVOSDesign.Spacing.elementSpacing) {
                     Text("Zuletzt gesucht")
@@ -464,6 +454,225 @@ struct MainBrowserView: View {
     }
 }
 
+// MARK: - Collapsible Wikipedia Panel
+
+struct CollapsibleWikipediaPanel: View {
+    let wikipediaInfo: WikipediaInfo
+    @Binding var isExpanded: Bool
+    let onTap: () -> Void
+    
+    @FocusState private var isFocused: Bool
+    @State private var isPressed: Bool = false
+    @State private var imageLoaded: Bool = false
+    @State private var imageError: Bool = false
+    
+    var body: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+                isPressed = true
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                    isPressed = false
+                }
+                onTap()
+            }
+        }) {
+            HStack(alignment: .top, spacing: TVOSDesign.Spacing.elementSpacing) {
+                // Wikipedia Bild (kleiner wenn minimiert)
+                wikipediaImageView
+                    .frame(width: isExpanded ? 120 : 60, height: isExpanded ? 120 : 60)
+                    .fixedSize()
+                
+                // Wikipedia Info - mit flexibler Breite
+                VStack(alignment: .leading, spacing: isExpanded ? 12 : 6) {
+                    // Titel + Attribution + Expand Button
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(wikipediaInfo.title)
+                                .font(.system(size: isExpanded ? TVOSDesign.Typography.title3 : TVOSDesign.Typography.callout, weight: .bold))
+                                .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                                .lineLimit(isExpanded ? 2 : 1)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            Text(wikipediaInfo.attributionText)
+                                .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
+                                .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                        }
+                        .layoutPriority(1)
+                        
+                        Spacer(minLength: 16)
+                        
+                        // Expand/Collapse Button
+                        Button(action: {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                isExpanded.toggle()
+                            }
+                        }) {
+                            Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .fixedSize()
+                    }
+                    
+                    // Zusammenfassung (nur wenn expanded)
+                    if isExpanded {
+                        Text(wikipediaInfo.displaySummary)
+                            .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
+                            .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        // Info-Felder (nur wenn expanded)
+                        if !wikipediaInfo.primaryInfoFields.isEmpty {
+                            HStack(alignment: .top, spacing: 20) {
+                                ForEach(wikipediaInfo.primaryInfoFields.prefix(2)) { field in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(field.key)
+                                            .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
+                                            .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                                        Text(field.value)
+                                            .font(.system(size: TVOSDesign.Typography.footnote, weight: .regular))
+                                            .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+                                            .lineLimit(2)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                // Pfeil-Icon
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                    .opacity(isFocused ? 1.0 : 0.6)
+                    .fixedSize()
+            }
+            .padding(isExpanded ? TVOSDesign.Spacing.elementSpacing : 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: isExpanded ? 160 : 80)
+            .background(
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .fill(backgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.9) : Color.clear,
+                        lineWidth: 3
+                    )
+            )
+            .scaleEffect(isPressed ? 0.98 : (isFocused ? 1.01 : 1.0))
+            .shadow(
+                color: shadowColor,
+                radius: shadowRadius,
+                y: shadowOffset
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .onChange(of: isFocused) { _, newValue in
+            if newValue {
+                // Wenn Panel fokussiert wird -> expandieren
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    isExpanded = true
+                }
+                // Reset scroll state für saubere Navigation
+                NotificationCenter.default.post(name: Notification.Name("ResetScrollState"), object: nil)
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.75), value: isFocused)
+        .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isExpanded)
+    }
+    
+    // MARK: - Wikipedia Image View
+    
+    @ViewBuilder
+    private var wikipediaImageView: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: isExpanded ? 16 : 10)
+                .fill(TVOSDesign.Colors.cardBackground)
+                .overlay(
+                    Group {
+                        if !imageLoaded && !imageError && wikipediaInfo.imageURL != nil {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.secondaryLabel))
+                                .scaleEffect(isExpanded ? 1.0 : 0.7)
+                        } else if imageError || wikipediaInfo.imageURL == nil {
+                            VStack(spacing: 4) {
+                                Image(systemName: "book.closed.fill")
+                                    .font(.system(size: isExpanded ? 28 : 18))
+                                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                                
+                                if isExpanded {
+                                    Text("Wiki")
+                                        .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
+                                        .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                                }
+                            }
+                        }
+                    }
+                )
+            
+            if let imageURL = wikipediaInfo.imageURL, !imageError {
+                AsyncImage(url: URL(string: imageURL)) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .clipShape(RoundedRectangle(cornerRadius: isExpanded ? 16 : 10))
+                        .onAppear {
+                            withAnimation(.easeIn(duration: 0.3)) {
+                                imageLoaded = true
+                            }
+                        }
+                } placeholder: {
+                    Color.clear
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                        if !imageLoaded {
+                            imageError = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Computed Properties
+    
+    private var backgroundColor: Color {
+        if isPressed {
+            return TVOSDesign.Colors.pressedCardBackground
+        } else if isFocused {
+            return TVOSDesign.Colors.focusedCardBackground
+        } else {
+            return TVOSDesign.Colors.cardBackground
+        }
+    }
+    
+    private var shadowColor: Color {
+        isFocused ? Color.black.opacity(0.5) : Color.black.opacity(0.2)
+    }
+    
+    private var shadowRadius: CGFloat {
+        isFocused ? 20 : 10
+    }
+    
+    private var shadowOffset: CGFloat {
+        isFocused ? 10 : 5
+    }
+}
+
 // MARK: - Native Video Player View
 
 struct NativeVideoPlayerView: View {
@@ -489,7 +698,6 @@ struct NativeVideoPlayerView: View {
                         player.pause()
                     }
             } else if isLoading {
-                // Loading State
                 VStack(spacing: 24) {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -507,7 +715,6 @@ struct NativeVideoPlayerView: View {
                         .padding(.horizontal, 40)
                 }
             } else if let error = errorMessage {
-                // Error State
                 VStack(spacing: 24) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 60))
@@ -522,13 +729,6 @@ struct NativeVideoPlayerView: View {
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
-                    
-                    Text("YouTube-Videos können auf tvOS nicht direkt abgespielt werden.\nDas Video wird im Browser geöffnet.")
-                        .font(.system(size: 16))
-                        .foregroundColor(.gray.opacity(0.8))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                        .padding(.top, 20)
                     
                     Button(action: {
                         isPresented = false
@@ -552,22 +752,15 @@ struct NativeVideoPlayerView: View {
             player?.pause()
             player = nil
         }
-        // Menü-Taste zum Schließen
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            player?.pause()
-        }
     }
     
     private func loadVideo() {
         isLoading = true
         errorMessage = nil
         
-        // Prüfe ob es eine direkte Video-URL ist
         let urlString = url.absoluteString
         
         if urlString.contains("youtube.com") || urlString.contains("youtu.be") {
-            // YouTube-Videos können nicht direkt in AVPlayer abgespielt werden
-            // Zeige Fehlermeldung und biete WebView als Alternative
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 isLoading = false
                 errorMessage = "YouTube-Videos erfordern die YouTube-App oder einen Browser."
@@ -575,11 +768,9 @@ struct NativeVideoPlayerView: View {
             return
         }
         
-        // Für direkte Video-URLs (MP4, M3U8, etc.)
         let playerItem = AVPlayerItem(url: url)
         let newPlayer = AVPlayer(playerItem: playerItem)
         
-        // Beobachte den Player-Status
         NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
@@ -632,22 +823,22 @@ struct TVOSButton: View {
             .padding(.horizontal, 44)
             .padding(.vertical, 20)
             .frame(minWidth: TVOSDesign.Spacing.standardTouchTarget,
-                   minHeight: TVOSDesign.Spacing.standardTouchTarget)  // tvOS HIG: Standard 66x66pt
+                   minHeight: TVOSDesign.Spacing.standardTouchTarget)
             .background(
                 RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
                     .fill(backgroundColor)
             )
             .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
-            .offset(y: isFocused ? -TVOSDesign.Focus.cardLiftOffset : 0)  // Lift-Effekt
+            .offset(y: isFocused ? -TVOSDesign.Focus.cardLiftOffset : 0)
             .shadow(
-                color: Color.black.opacity(isFocused ? 0.4 : 0),  // Neutraler Schatten ohne Orange
+                color: Color.black.opacity(isFocused ? 0.4 : 0),
                 radius: TVOSDesign.Focus.shadowRadius,
                 y: 8
             )
         }
         .buttonStyle(PlainButtonStyle())
         .focused($isFocused)
-        .zIndex(isFocused ? 100 : 0)  // Fokussiertes Element weit oben
+        .zIndex(isFocused ? 100 : 0)
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
         .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
     }
@@ -704,22 +895,22 @@ struct TVOSChipButton: View {
             .foregroundColor(isFocused ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.secondaryLabel)
             .padding(.horizontal, 28)
             .padding(.vertical, 16)
-            .frame(minHeight: TVOSDesign.Spacing.minTouchTarget)  // tvOS HIG: Minimum 56pt Touch Target
+            .frame(minHeight: TVOSDesign.Spacing.minTouchTarget)
             .background(
                 RoundedRectangle(cornerRadius: 16)
                     .fill(isFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
             )
             .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
-            .offset(y: isFocused ? -6 : 0)  // Subtiler Lift-Effekt für Chips
+            .offset(y: isFocused ? -6 : 0)
             .shadow(
-                color: Color.black.opacity(isFocused ? 0.3 : 0),  // Neutraler Schatten ohne Orange
+                color: Color.black.opacity(isFocused ? 0.3 : 0),
                 radius: 12,
                 y: 4
             )
         }
         .buttonStyle(PlainButtonStyle())
         .focused($isFocused)
-        .zIndex(isFocused ? 100 : 0)  // Fokussiertes Element weit oben
+        .zIndex(isFocused ? 100 : 0)
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
         .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
     }

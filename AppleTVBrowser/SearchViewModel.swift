@@ -248,4 +248,17 @@ final class SearchViewModel: ObservableObject {
         errorMessage = nil
         wikipediaInfo = nil
     }
+    
+    /// Vollständiger Reset zur Startseite
+    func resetToHomeState() {
+        searchQuery = ""
+        searchResults = []
+        imageResults = []
+        videoResults = []
+        wikipediaInfo = nil
+        errorMessage = nil
+        isSearching = false
+        selectedResult = nil
+        isWebViewPresented = false
+    }
 }

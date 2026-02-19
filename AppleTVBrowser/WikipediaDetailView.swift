@@ -12,9 +12,18 @@ struct WikipediaDetailView: View {
     let onTap: () -> Void
     
     @FocusState private var isFocused: Bool
+    @FocusState private var imageFocused: Bool
+    @FocusState private var textFocused: Bool
+    @FocusState private var urlBoxFocused: Bool
     @State private var isPressed: Bool = false
     @State private var imageLoaded: Bool = false
     @State private var imageError: Bool = false
+    
+    // Fullscreen Viewer States
+    @State private var showFullscreenText: Bool = false
+    @State private var showFullscreenImage: Bool = false
+    @State private var selectedTextContent: String = ""
+    @State private var selectedTextTitle: String = ""
     
     var body: some View {
         VStack(spacing: TVOSDesign.Spacing.cardSpacing) {
@@ -37,6 +46,22 @@ struct WikipediaDetailView: View {
         .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
         .padding(.vertical, TVOSDesign.Spacing.elementSpacing)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .fullScreenCover(isPresented: $showFullscreenText) {
+            FullscreenTextViewer(
+                title: selectedTextTitle,
+                text: selectedTextContent,
+                isPresented: $showFullscreenText
+            )
+        }
+        .fullScreenCover(isPresented: $showFullscreenImage) {
+            if let imageURL = wikipediaInfo.imageURL {
+                FullscreenImageViewer(
+                    imageURL: imageURL,
+                    title: "Wikipedia Bild: \(wikipediaInfo.title)",
+                    isPresented: $showFullscreenImage
+                )
+            }
+        }
     }
     
     // MARK: - Header Section
@@ -44,9 +69,24 @@ struct WikipediaDetailView: View {
     @ViewBuilder
     private var headerSection: some View {
         HStack(spacing: TVOSDesign.Spacing.cardSpacing) {
-            // Wikipedia-Bild (größer als im Panel)
-            wikipediaImageView
-                .frame(width: 240, height: 240)
+            // Wikipedia-Bild (größer als im Panel) - fokussierbar für Fullscreen
+            Button(action: {
+                if let imageURL = wikipediaInfo.imageURL {
+                    showFullscreenImage = true
+                }
+            }) {
+                wikipediaImageView
+            }
+            .buttonStyle(PlainButtonStyle())
+            .focused($imageFocused)
+            .scaleEffect(imageFocused ? TVOSDesign.Focus.scale : 1.0)
+            .shadow(
+                color: Color.black.opacity(imageFocused ? 0.4 : 0),
+                radius: imageFocused ? 16 : 0,
+                y: imageFocused ? 8 : 0
+            )
+            .animation(TVOSDesign.Animation.focusSpring, value: imageFocused)
+            .frame(width: 240, height: 240)
             
             // Titel und Attribution
             VStack(alignment: .leading, spacing: TVOSDesign.Spacing.elementSpacing) {
@@ -79,16 +119,39 @@ struct WikipediaDetailView: View {
                     .font(.system(size: TVOSDesign.Typography.title3, weight: .semibold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 
-                Text(wikipediaInfo.summary)
-                    .font(.system(size: TVOSDesign.Typography.body, weight: .regular))
-                    .foregroundColor(TVOSDesign.Colors.secondaryLabel)
-                    .lineSpacing(6)
-                    .multilineTextAlignment(.leading)
-                    .padding(TVOSDesign.Spacing.elementSpacing)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(TVOSDesign.Colors.cardBackground)
-                    )
+                Button(action: {
+                    selectedTextContent = wikipediaInfo.summary
+                    selectedTextTitle = "Wikipedia Artikel: \(wikipediaInfo.title)"
+                    showFullscreenText = true
+                }) {
+                    Text(wikipediaInfo.summary)
+                        .font(.system(size: TVOSDesign.Typography.body, weight: .regular))
+                        .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+                        .lineSpacing(6)
+                        .multilineTextAlignment(.leading)
+                        .padding(TVOSDesign.Spacing.elementSpacing)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(textFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    textFocused ? Color.white.opacity(0.6) : Color.clear,
+                                    lineWidth: 2
+                                )
+                        )
+                        .scaleEffect(textFocused ? 1.01 : 1.0)
+                        .shadow(
+                            color: Color.black.opacity(textFocused ? 0.3 : 0),
+                            radius: textFocused ? 12 : 0,
+                            y: textFocused ? 6 : 0
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .focused($textFocused)
+                .animation(TVOSDesign.Animation.focusSpring, value: textFocused)
             }
             
             // Zusätzliche Artikel-Informationen
@@ -104,24 +167,44 @@ struct WikipediaDetailView: View {
                     ],
                     spacing: TVOSDesign.Spacing.elementSpacing
                 ) {
-                    // Artikel-URL
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Wikipedia-URL")
-                            .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
-                            .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
-                        
-                        Text(wikipediaInfo.articleURL)
-                            .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
-                            .foregroundColor(TVOSDesign.Colors.accentBlue)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
+                    // Artikel-URL (fokussierbar - öffnet Wikipedia)
+                    Button(action: {
+                        onTap() // Öffnet die Wikipedia-Seite
+                    }) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Wikipedia-URL")
+                                .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
+                                .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                            
+                            Text(wikipediaInfo.articleURL)
+                                .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
+                                .foregroundColor(TVOSDesign.Colors.accentBlue)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(TVOSDesign.Spacing.elementSpacing)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(urlBoxFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    urlBoxFocused ? TVOSDesign.Colors.accentBlue.opacity(0.8) : Color.clear,
+                                    lineWidth: 2
+                                )
+                        )
+                        .scaleEffect(urlBoxFocused ? 1.02 : 1.0)
+                        .shadow(
+                            color: Color.black.opacity(urlBoxFocused ? 0.4 : 0),
+                            radius: urlBoxFocused ? 12 : 0,
+                            y: urlBoxFocused ? 6 : 0
+                        )
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(TVOSDesign.Spacing.elementSpacing)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(TVOSDesign.Colors.cardBackground)
-                    )
+                    .buttonStyle(PlainButtonStyle())
+                    .focused($urlBoxFocused)
+                    .animation(TVOSDesign.Animation.focusSpring, value: urlBoxFocused)
                     
                     // Sprache
                     VStack(alignment: .leading, spacing: 8) {
