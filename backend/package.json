@@ -1,0 +1,30 @@
+{
+  "name": "appletv-browser-backend",
+  "version": "1.0.0",
+  "description": "Backend-Proxy für AppleTV Browser App - Netlify Functions für sichere API-Calls",
+  "main": "index.js",
+  "scripts": {
+    "dev": "netlify dev",
+    "build": "echo 'No build step needed for serverless functions'",
+    "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "netlify-cli": "^18.0.0"
+  },
+  "keywords": [
+    "tvos",
+    "browser",
+    "search",
+    "proxy",
+    "netlify",
+    "serverless"
+  ],
+  "author": "AppleTV Browser Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

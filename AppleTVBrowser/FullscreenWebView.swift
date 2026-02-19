@@ -24,13 +24,11 @@ struct FullscreenWebView: View {
     @State private var showNavigationBar: Bool = true
     @State private var showHelpHint: Bool = true
     
-    // Animationswerte für sanftes Verschwinden
     @State private var helpHintOpacity: Double = 1.0
     @State private var helpHintOffset: CGFloat = 0
     @State private var helpHintScale: CGFloat = 1.0
     @State private var helpHintBlur: CGFloat = 0
     
-    // Shared WebView Controller
     @StateObject private var webViewController = WebViewScrollController()
     
     var body: some View {
@@ -38,7 +36,6 @@ struct FullscreenWebView: View {
             Color.black
                 .ignoresSafeArea()
             
-            // WebView mit direktem Scroll-Handling
             WebViewContainer(
                 urlString: $urlString,
                 isLoading: $isLoading,
@@ -49,10 +46,8 @@ struct FullscreenWebView: View {
                 scrollController: webViewController,
                 onMenuPress: {
                     if canGoBack {
-                        print("🔙 WebView goBack (canGoBack=true)")
                         webViewController.goBack()
                     } else {
-                        print("🚪 Schließe WebView (canGoBack=false)")
                         dismiss()
                     }
                 },
@@ -65,7 +60,6 @@ struct FullscreenWebView: View {
             .padding(.top, showNavigationBar ? 100 : 0)
             .ignoresSafeArea(edges: showNavigationBar ? [.bottom, .leading, .trailing] : .all)
             
-            // Navigationsleiste oben
             if showNavigationBar {
                 navigationBar
                     .transition(
@@ -76,13 +70,11 @@ struct FullscreenWebView: View {
                     )
             }
             
-            // Loading indicator
             if isLoading {
                 loadingIndicator
                     .transition(.opacity.combined(with: .scale(scale: 0.9)).animation(.spring(response: 0.4, dampingFraction: 0.7)))
             }
             
-            // Hilfe-Hinweis mit weichem Verschwinde-Effekt
             if showNavigationBar && showHelpHint {
                 VStack {
                     Spacer()
@@ -98,21 +90,13 @@ struct FullscreenWebView: View {
         .onAppear {
             urlString = url
             pageTitle = title.isEmpty ? url : title
-            
-            // Sanftes Verschwinden des Hilfe-Hinweises starten
             startSmoothHelpHintFadeOut()
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showNavigationBar)
     }
     
-    // MARK: - Smooth Help Hint Fade Out Animation
-    
     private func startSmoothHelpHintFadeOut() {
-        // Nach 6 Sekunden: Eine durchgehende, nahtlose Animation
-        // Erst langsam dimmen, dann beschleunigt zusammenziehen
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
-            // Alles in einer Animation mit custom Timing Curve
-            // Die Kurve startet langsam (Dimmen) und beschleunigt dann (Zusammenziehen)
             withAnimation(.timingCurve(0.4, 0.0, 0.2, 1.0, duration: 3.5)) {
                 helpHintOpacity = 0
                 helpHintScale = 0.3
@@ -120,18 +104,14 @@ struct FullscreenWebView: View {
                 helpHintBlur = 12
             }
             
-            // View entfernen nach Animation
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.7) {
                 showHelpHint = false
             }
         }
     }
     
-    // MARK: - Navigation Bar
-    
     private var navigationBar: some View {
         HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-            // Zurück-Button mit tvOS Focus Style
             TVOSNavButton(
                 icon: "chevron.left",
                 label: "Zurück",
@@ -140,14 +120,12 @@ struct FullscreenWebView: View {
                 dismiss()
             }
             
-            // Safari-Style URL Bar (zentriert)
             SafariURLBar(
                 urlString: urlString,
                 pageTitle: pageTitle.isEmpty ? "Laden..." : pageTitle
             )
             .frame(maxWidth: .infinity)
             
-            // Navigation Controls
             HStack(spacing: 16) {
                 TVOSNavIconButton(
                     icon: "arrow.left",
@@ -239,19 +217,6 @@ struct FullscreenWebView: View {
     }
 }
 
-// MARK: - Smooth Animation Constants
-
-private enum SmoothAnimation {
-    // Weiche, natürliche Spring-Animationen
-    static let focusSpring = Animation.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2)
-    static let pressSpring = Animation.spring(response: 0.25, dampingFraction: 0.65, blendDuration: 0.1)
-    static let hoverSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0.15)
-    
-    // Geschmeidige Ease-Kurven
-    static let smoothEase = Animation.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.4)
-    static let gentleEase = Animation.timingCurve(0.4, 0.0, 0.2, 1.0, duration: 0.5)
-}
-
 // MARK: - tvOS Navigation Button Components
 
 struct TVOSNavButton: View {
@@ -268,7 +233,6 @@ struct TVOSNavButton: View {
         Button(action: {
             guard isEnabled else { return }
             
-            // Geschmeidigere Press-Animation
             withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
                 isPressed = true
             }
@@ -373,17 +337,12 @@ class WebViewScrollController: ObservableObject {
     weak var webView: UIView?
     weak var hostController: WebViewHostController?
     
-    // Smooth scroll mit CSS behavior und momentum
     func smoothScroll(by offset: CGFloat) {
         DispatchQueue.main.async { [weak self] in
-            guard let webView = self?.webView else {
-                print("❌ WebView nicht verfügbar für Scroll")
-                return
-            }
+            guard let webView = self?.webView else { return }
             
             let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
             if webView.responds(to: jsSelector) {
-                // Smooth scroll mit CSS behavior
                 let scrollJS = """
                     const currentY = window.pageYOffset;
                     const targetY = currentY + \(Int(offset));
@@ -394,28 +353,18 @@ class WebViewScrollController: ObservableObject {
                     true;
                 """
                 _ = webView.perform(jsSelector, with: scrollJS)
-                print("🌊 Smooth Scroll: \(Int(offset))px")
-            } else {
-                print("❌ JavaScript nicht verfügbar")
             }
         }
     }
     
-    // Legacy direktes Scrollen für sehr kleine Adjustments
     func scroll(by offset: CGFloat) {
         DispatchQueue.main.async { [weak self] in
-            guard let webView = self?.webView else {
-                print("❌ WebView nicht verfügbar für Scroll")
-                return
-            }
+            guard let webView = self?.webView else { return }
             
             let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
             if webView.responds(to: jsSelector) {
                 let scrollJS = "window.scrollBy(0, \(Int(offset))); true;"
                 _ = webView.perform(jsSelector, with: scrollJS)
-                print("📜 JS Scroll: \(Int(offset))px")
-            } else {
-                print("❌ JavaScript nicht verfügbar")
             }
         }
     }
@@ -526,13 +475,18 @@ class WebViewHostController: UIViewController {
     var onMenuPress: (() -> Void)?
     var onPlayPause: (() -> Void)?
     
-    // Pan tracking
     private var lastPanY: CGFloat = 0
     private var isPanning = false
-    
-    // Scroll-Timer für kontinuierliches Scrollen
     private var scrollTimer: Timer?
     private var currentScrollDirection: CGFloat = 0
+    
+    // MARK: - Scroll Configuration (SEHR LANGSAM)
+    private let arrowScrollAmount: CGFloat = 25           // Sehr langsam bei Pfeiltasten
+    private let continuousScrollAmount: CGFloat = 15      // Sehr langsam bei gehaltenem Pfeil
+    private let panScrollMultiplier: CGFloat = 1.5        // Sehr langsam beim Wischen
+    private let momentumMultiplier: CGFloat = 0.05        // Minimaler Momentum-Effekt
+    private let continuousScrollInterval: TimeInterval = 0.08
+    private let remoteButtonScrollAmount: CGFloat = 40    // Scroll bei Remote-Tasten
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -546,7 +500,6 @@ class WebViewHostController: UIViewController {
         super.viewDidAppear(animated)
         becomeFirstResponder()
         UIApplication.shared.beginReceivingRemoteControlEvents()
-        print("🎮 Remote Control Events aktiviert")
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -575,7 +528,6 @@ class WebViewHostController: UIViewController {
         }
         
         guard let webViewClass = NSClassFromString("UIWebView") as? UIView.Type else {
-            print("❌ UIWebView nicht verfügbar")
             return
         }
         
@@ -602,8 +554,6 @@ class WebViewHostController: UIViewController {
                 scrollView.contentInsetAdjustmentBehavior = .never
             }
         }
-        
-        print("✅ WebView erstellt")
     }
     
     // MARK: - MPRemoteCommandCenter Setup
@@ -611,62 +561,49 @@ class WebViewHostController: UIViewController {
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
         
-        // Skip Forward = Scroll Down (optimiert für smoothere Bewegung)
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
-            print("⏩ Skip Forward -> Smooth Scroll Down")
-            self?.scrollController?.smoothScroll(by: 180)
+            self?.scrollController?.smoothScroll(by: self?.remoteButtonScrollAmount ?? 40)
             return .success
         }
         
-        // Skip Backward = Scroll Up (optimiert für smoothere Bewegung)
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
-            print("⏪ Skip Backward -> Smooth Scroll Up")
-            self?.scrollController?.smoothScroll(by: -180)
+            self?.scrollController?.smoothScroll(by: -(self?.remoteButtonScrollAmount ?? 40))
             return .success
         }
         
-        // Play/Pause = Toggle Navigation Bar
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            print("⏯️ Toggle Play/Pause -> Navigation Toggle")
             DispatchQueue.main.async {
                 self?.onPlayPause?()
             }
             return .success
         }
         
-        // Play = auch für Navigation
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            print("▶️ Play -> Navigation Toggle")
             DispatchQueue.main.async {
                 self?.onPlayPause?()
             }
             return .success
         }
         
-        // Pause = auch für Navigation
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            print("⏸️ Pause -> Navigation Toggle")
             DispatchQueue.main.async {
                 self?.onPlayPause?()
             }
             return .success
         }
         
-        // Now Playing Info setzen (notwendig für Remote Commands)
         var nowPlayingInfo = [String: Any]()
         nowPlayingInfo[MPMediaItemPropertyTitle] = "Web Browser"
         nowPlayingInfo[MPMediaItemPropertyArtist] = "AppleTVBrowser"
         nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = true
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-        
-        print("✅ MPRemoteCommandCenter eingerichtet")
     }
     
     private func teardownRemoteCommandCenter() {
@@ -677,13 +614,12 @@ class WebViewHostController: UIViewController {
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        print("🛑 MPRemoteCommandCenter deaktiviert")
     }
     
-    // MARK: - Gesture Setup (zusätzlich zu Remote Commands)
+    // MARK: - Gesture Setup
     
     private func setupGestures() {
-        // Pan gesture for touchpad
+        // Pan gesture for touchpad (Siri Remote 1 & 2)
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         pan.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
         view.addGestureRecognizer(pan)
@@ -693,24 +629,40 @@ class WebViewHostController: UIViewController {
         tap.allowedPressTypes = [NSNumber(value: UIPress.PressType.select.rawValue)]
         view.addGestureRecognizer(tap)
         
-        // Play/Pause button (als Backup)
+        // Play/Pause button
         let playPause = UITapGestureRecognizer(target: self, action: #selector(handlePlayPause))
         playPause.allowedPressTypes = [NSNumber(value: UIPress.PressType.playPause.rawValue)]
         view.addGestureRecognizer(playPause)
         
-        // Menu button - WICHTIG: Eigene Geste für Menü-Taste
+        // Menu button
         let menuTap = UITapGestureRecognizer(target: self, action: #selector(handleMenuPress))
         menuTap.allowedPressTypes = [NSNumber(value: UIPress.PressType.menu.rawValue)]
         view.addGestureRecognizer(menuTap)
         
-        print("✅ Gestures eingerichtet")
+        // Swipe gestures for Siri Remote 2 Click-Pad edges
+        let swipeUp = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipeUp))
+        swipeUp.direction = .up
+        swipeUp.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
+        view.addGestureRecognizer(swipeUp)
+        
+        let swipeDown = UISwipeGestureRecognizer(target: self, action: #selector(handleSwipeDown))
+        swipeDown.direction = .down
+        swipeDown.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
+        view.addGestureRecognizer(swipeDown)
     }
     
     @objc private func handleMenuPress() {
-        print("📱 Menü-Taste gedrückt (Gesture)")
         DispatchQueue.main.async { [weak self] in
             self?.onMenuPress?()
         }
+    }
+    
+    @objc private func handleSwipeUp() {
+        scrollController?.smoothScroll(by: -remoteButtonScrollAmount)
+    }
+    
+    @objc private func handleSwipeDown() {
+        scrollController?.smoothScroll(by: remoteButtonScrollAmount)
     }
     
     // MARK: - Gesture Handlers
@@ -721,7 +673,6 @@ class WebViewHostController: UIViewController {
         
         switch gesture.state {
         case .began:
-            print("🖐️ Pan began")
             lastPanY = 0
             isPanning = true
             
@@ -729,29 +680,24 @@ class WebViewHostController: UIViewController {
             let deltaY = translation.y - lastPanY
             lastPanY = translation.y
             
-            // Optimierter Multiplikator für smoothere Touchpad-Erfahrung
-            let scrollAmount = -deltaY * 8.5
+            let scrollAmount = -deltaY * panScrollMultiplier
             
-            // Verwende smooth scroll für kleinere Bewegungen
-            if abs(scrollAmount) < 50 {
+            if abs(scrollAmount) < 15 {
                 scrollController?.smoothScroll(by: scrollAmount)
             } else {
                 scrollController?.scroll(by: scrollAmount)
             }
             
         case .ended:
-            print("🖐️ Pan ended - adding momentum")
             isPanning = false
             lastPanY = 0
             
-            // Momentum-Effekt basierend auf Geschwindigkeit
-            let momentumY = -velocity.y * 0.3
-            if abs(momentumY) > 20 {
-                scrollController?.smoothScroll(by: min(max(momentumY, -200), 200))
+            let momentumY = -velocity.y * momentumMultiplier
+            if abs(momentumY) > 5 {
+                scrollController?.smoothScroll(by: min(max(momentumY, -50), 50))
             }
             
         case .cancelled:
-            print("🖐️ Pan cancelled")
             isPanning = false
             lastPanY = 0
             
@@ -761,17 +707,16 @@ class WebViewHostController: UIViewController {
     }
     
     @objc private func handleTap() {
-        print("👆 Tap")
+        // Select button tap - könnte für Interaktion verwendet werden
     }
     
     @objc private func handlePlayPause() {
-        print("⏯️ Play/Pause (Gesture)")
         DispatchQueue.main.async { [weak self] in
             self?.onPlayPause?()
         }
     }
     
-    // MARK: - Press Handling (D-Pad) mit Timer für kontinuierliches Scrollen
+    // MARK: - Press Handling (D-Pad und Siri Remote 2 Click-Pad)
     
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         var handled = false
@@ -779,24 +724,43 @@ class WebViewHostController: UIViewController {
         for press in presses {
             switch press.type {
             case .menu:
-                print("📱 Menü-Taste gedrückt (pressesBegan)")
                 DispatchQueue.main.async { [weak self] in
                     self?.onMenuPress?()
                 }
                 handled = true
                 
             case .upArrow:
-                print("⬆️ Up Arrow gedrückt")
-                startSmoothContinuousScroll(direction: -120)
+                startSmoothContinuousScroll(direction: -arrowScrollAmount)
                 handled = true
                 
             case .downArrow:
-                print("⬇️ Down Arrow gedrückt")
-                startSmoothContinuousScroll(direction: 120)
+                startSmoothContinuousScroll(direction: arrowScrollAmount)
+                handled = true
+                
+            case .leftArrow:
+                // Optional: Horizontal scrollen oder andere Aktion
+                handled = true
+                
+            case .rightArrow:
+                // Optional: Horizontal scrollen oder andere Aktion
                 handled = true
                 
             case .playPause:
                 onPlayPause?()
+                handled = true
+                
+            case .select:
+                // Click auf dem Click-Pad - könnte für Interaktion verwendet werden
+                handled = true
+                
+            case .pageUp:
+                // Siri Remote 2: Seite hoch
+                scrollController?.smoothScroll(by: -remoteButtonScrollAmount * 3)
+                handled = true
+                
+            case .pageDown:
+                // Siri Remote 2: Seite runter
+                scrollController?.smoothScroll(by: remoteButtonScrollAmount * 3)
                 handled = true
                 
             default:
@@ -812,8 +776,7 @@ class WebViewHostController: UIViewController {
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
             switch press.type {
-            case .upArrow, .downArrow:
-                print("🛑 Arrow released")
+            case .upArrow, .downArrow, .leftArrow, .rightArrow:
                 stopContinuousScroll()
             default:
                 break
@@ -827,19 +790,14 @@ class WebViewHostController: UIViewController {
         super.pressesCancelled(presses, with: event)
     }
     
-    // Neue smoother continuous scroll Implementierung
     private func startSmoothContinuousScroll(direction: CGFloat) {
         currentScrollDirection = direction
-        
-        // Erster Scroll mit smooth CSS behavior
         scrollController?.smoothScroll(by: direction)
         
-        // Timer mit längerem Intervall für smoothere Bewegung
         scrollTimer?.invalidate()
-        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { [weak self] _ in
+        scrollTimer = Timer.scheduledTimer(withTimeInterval: continuousScrollInterval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            // Verwende smooth scroll für kontinuierliche Bewegung
-            self.scrollController?.smoothScroll(by: self.currentScrollDirection * 0.8)
+            self.scrollController?.smoothScroll(by: self.continuousScrollAmount * (self.currentScrollDirection > 0 ? 1 : -1))
         }
     }
     
@@ -866,7 +824,6 @@ class WebViewHostController: UIViewController {
         let selector = NSSelectorFromString("loadRequest:")
         if webView.responds(to: selector) {
             webView.perform(selector, with: request)
-            print("🌐 Lade: \(urlString)")
         }
     }
     
@@ -908,14 +865,12 @@ class WebViewHostController: UIViewController {
             
             self.scrollController?.webView = webView
             self.delegate?.didFinishLoading(canGoBack: canGoBack, canGoForward: canGoForward, title: title, url: currentURL)
-            print("✅ Seite geladen: \(title)")
         }
     }
     
     @objc func webView(_ webView: UIView, didFailLoadWithError error: Error) {
         DispatchQueue.main.async { [weak self] in
             self?.delegate?.didFailLoading()
-            print("❌ Fehler: \(error.localizedDescription)")
         }
     }
     
@@ -944,7 +899,6 @@ struct SafariURLBar: View {
     
     var body: some View {
         Button(action: {
-            // Sanfter Crossfade zwischen URL und Titel
             withAnimation(.easeInOut(duration: 0.25)) {
                 contentOpacity = 0
             }
@@ -957,13 +911,11 @@ struct SafariURLBar: View {
             }
         }) {
             HStack(spacing: 12) {
-                // Sicherheits-Icon (grün für HTTPS) mit sanfter Animation
                 Image(systemName: isSecure ? "lock.fill" : "lock.slash")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(isSecure ? TVOSDesign.Colors.systemGreen : TVOSDesign.Colors.tertiaryLabel)
                     .animation(.easeInOut(duration: 0.3), value: isSecure)
                 
-                // URL oder Titel (umschaltbar) mit Crossfade
                 Text(showTitle ? pageTitle : displayURL)
                     .font(.system(size: TVOSDesign.Typography.subheadline, weight: .medium))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
@@ -975,7 +927,6 @@ struct SafariURLBar: View {
             .padding(.vertical, 16)
             .frame(minHeight: TVOSDesign.Spacing.minTouchTarget)
             .background(
-                // Safari-Style Kapsel mit sanftem Übergang
                 Capsule()
                     .fill(
                         isFocused 
@@ -984,7 +935,6 @@ struct SafariURLBar: View {
                     )
             )
             .overlay(
-                // Focus-Rahmen (reduziert)
                 Capsule()
                     .stroke(
                         isFocused ? Color.white.opacity(0.8) : Color.clear,
@@ -1003,7 +953,6 @@ struct SafariURLBar: View {
         .focused($isFocused)
         .animation(.spring(response: 0.4, dampingFraction: 0.75, blendDuration: 0.2), value: isFocused)
         .onAppear {
-            // Sanfter automatischer Wechsel zum Titel
             if !pageTitle.isEmpty && pageTitle != "Laden..." {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -1020,7 +969,6 @@ struct SafariURLBar: View {
             }
         }
         .onChange(of: pageTitle) { _, newTitle in
-            // Wenn Titel sich ändert (z.B. nach Laden), sanft aktualisieren
             if !newTitle.isEmpty && newTitle != "Laden..." && !showTitle {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -1038,9 +986,6 @@ struct SafariURLBar: View {
         }
     }
     
-    // MARK: - Helper Functions
-    
-    /// Extrahiert Domain aus URL String (ohne www. und Protokoll)
     private func extractDomain(from urlString: String) -> String {
         guard let url = URL(string: urlString) else {
             return urlString
@@ -1048,7 +993,6 @@ struct SafariURLBar: View {
         
         var host = url.host ?? urlString
         
-        // Entferne www. Präfix
         if host.hasPrefix("www.") {
             host = String(host.dropFirst(4))
         }
@@ -1058,33 +1002,6 @@ struct SafariURLBar: View {
 }
 
 #Preview {
-    ZStack {
-        TVOSDesign.Colors.background.ignoresSafeArea()
-        
-        VStack(spacing: 40) {
-            // HTTPS Beispiel
-            SafariURLBar(
-                urlString: "https://www.apple.com/de/tv-home/",
-                pageTitle: "Apple TV - Apple (DE)"
-            )
-            
-            // HTTP Beispiel (unsicher)
-            SafariURLBar(
-                urlString: "http://example.com/test",
-                pageTitle: "Test Page"
-            )
-            
-            // Laden-Status
-            SafariURLBar(
-                urlString: "https://www.google.com",
-                pageTitle: "Laden..."
-            )
-        }
-        .padding()
-    }
-}
-
-#Preview("Original WebView") {
     FullscreenWebView(
         url: "https://www.example.com",
         title: "Example",

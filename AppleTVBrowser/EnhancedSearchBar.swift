@@ -12,10 +12,13 @@ struct EnhancedSearchBar: View {
     @Binding var isSearching: Bool
     let searchHistory: [String]
     let onSearch: () -> Void
+    let onReset: (() -> Void)?
+    let hasResults: Bool
     
     @State private var showSuggestions: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
     @FocusState private var focusedSuggestionIndex: Int?
+    @FocusState private var backButtonFocused: Bool
     
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +38,12 @@ struct EnhancedSearchBar: View {
     
     private var searchBarContent: some View {
         HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            // Zurück-Button (nur wenn Suchergebnisse vorhanden)
+            if hasResults {
+                backButton
+                    .transition(.scale.combined(with: .opacity))
+            }
+            
             // Suchfeld mit Focus-Effekt
             searchField
             
@@ -121,6 +130,47 @@ struct EnhancedSearchBar: View {
             y: 8
         )
         .animation(TVOSDesign.Animation.focusSpring, value: isSearchFieldFocused)
+    }
+    
+    // MARK: - Back Button
+    
+    private var backButton: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                onReset?()
+            }
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 22, weight: .semibold))
+                Text("Zurück")
+                    .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
+            }
+            .foregroundColor(backButtonFocused ? .white : TVOSDesign.Colors.secondaryLabel)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .frame(minHeight: TVOSDesign.Spacing.standardTouchTarget)
+            .background(
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .fill(backButtonFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .stroke(
+                        backButtonFocused ? TVOSDesign.Colors.systemBlue : Color.clear,
+                        lineWidth: 3
+                    )
+            )
+            .scaleEffect(backButtonFocused ? TVOSDesign.Focus.scale : 1.0)
+            .shadow(
+                color: backButtonFocused ? TVOSDesign.Colors.focusGlow : Color.clear,
+                radius: TVOSDesign.Focus.shadowRadius,
+                y: 8
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($backButtonFocused)
+        .animation(TVOSDesign.Animation.focusSpring, value: backButtonFocused)
     }
     
     // MARK: - Search Button
@@ -334,7 +384,9 @@ struct TVOSIconButton: View {
             searchQuery: .constant("Apple"),
             isSearching: .constant(false),
             searchHistory: ["Apple", "Wikipedia", "GitHub", "Swift", "tvOS"],
-            onSearch: {}
+            onSearch: {},
+            onReset: {},
+            hasResults: true
         )
             
             Spacer()
