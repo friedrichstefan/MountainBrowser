@@ -14,6 +14,7 @@ struct EnhancedSearchBar: View {
     let onSearch: () -> Void
     let onReset: (() -> Void)?
     let hasResults: Bool
+    let onShowTabs: (() -> Void)?
     
     @State private var showSuggestions: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
@@ -46,6 +47,12 @@ struct EnhancedSearchBar: View {
             
             // Suchfeld mit Focus-Effekt
             searchField
+            
+            // Tab-Button
+            if let onShowTabs = onShowTabs {
+                tabButton(action: onShowTabs)
+                    .transition(.scale.combined(with: .opacity))
+            }
             
             // Such-Button
             searchButton
@@ -171,6 +178,23 @@ struct EnhancedSearchBar: View {
         .buttonStyle(PlainButtonStyle())
         .focused($backButtonFocused)
         .animation(TVOSDesign.Animation.focusSpring, value: backButtonFocused)
+    }
+    
+    // MARK: - Tab Button
+    
+    private func tabButton(action: @escaping () -> Void) -> some View {
+        TVOSIconButton(
+            icon: "rectangle.stack",
+            label: "Tabs",
+            isEnabled: true,
+            gradient: LinearGradient(
+                colors: [TVOSDesign.Colors.systemIndigo, TVOSDesign.Colors.systemIndigo.opacity(0.8)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            foregroundWhenEnabled: .white,
+            action: action
+        )
     }
     
     // MARK: - Search Button
@@ -386,7 +410,8 @@ struct TVOSIconButton: View {
             searchHistory: ["Apple", "Wikipedia", "GitHub", "Swift", "tvOS"],
             onSearch: {},
             onReset: {},
-            hasResults: true
+            hasResults: true,
+            onShowTabs: {}
         )
             
             Spacer()
