@@ -29,7 +29,7 @@ struct WikipediaInfoPanel: View {
                 onTap()
             }
         }) {
-            HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            HStack(spacing: 20) {
                 // Wikipedia Bild (links)
                 wikipediaImageView
                 
@@ -38,19 +38,19 @@ struct WikipediaInfoPanel: View {
                     // Titel + Attribution
                     VStack(alignment: .leading, spacing: 8) {
                         Text(wikipediaInfo.title)
-                            .font(.system(size: TVOSDesign.Typography.title3, weight: .bold))
-                            .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.primary)
                             .lineLimit(2)
                         
                         Text(wikipediaInfo.attributionText)
-                            .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
-                            .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
                     
                     // Zusammenfassung
                     Text(wikipediaInfo.displaySummary)
-                        .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
-                        .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(.secondary)
                         .lineLimit(4)
                         .multilineTextAlignment(.leading)
                     
@@ -67,19 +67,19 @@ struct WikipediaInfoPanel: View {
                 // Pfeil-Icon (rechts)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                    .foregroundColor(.secondary)
                     .opacity(isFocused ? 1.0 : 0.6)
             }
-            .padding(TVOSDesign.Spacing.elementSpacing)
+            .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: 200) // Mindesthöhe für TV-optimierte Darstellung
             .background(
-                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                RoundedRectangle(cornerRadius: 16)
                     .fill(backgroundColor)
             )
             .overlay(
                 // Focus Ring
-                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                RoundedRectangle(cornerRadius: 16)
                     .stroke(
                         isFocused ? Color.white.opacity(0.9) : Color.clear,
                         lineWidth: 3
@@ -107,25 +107,25 @@ struct WikipediaInfoPanel: View {
         ZStack {
             // Placeholder
             RoundedRectangle(cornerRadius: 16)
-                .fill(TVOSDesign.Colors.cardBackground)
+                .fill(Color.secondary.opacity(0.2))
                 .frame(width: 150, height: 150)
                 .overlay(
                     Group {
                         if !imageLoaded && !imageError && wikipediaInfo.imageURL != nil {
                             // Loading State
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.secondaryLabel))
+                                .progressViewStyle(CircularProgressViewStyle(tint: .secondary))
                                 .scaleEffect(1.2)
                         } else if imageError || wikipediaInfo.imageURL == nil {
                             // No Image / Error State
                             VStack(spacing: 8) {
                                 Image(systemName: "book.closed.fill")
                                     .font(.system(size: 32))
-                                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                                    .foregroundColor(.secondary)
                                 
                                 Text("Wikipedia")
-                                    .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
-                                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.secondary)
                             }
                         }
                     }
@@ -166,7 +166,7 @@ struct WikipediaInfoPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             // Trennlinie
             Rectangle()
-                .fill(TVOSDesign.Colors.tertiaryLabel.opacity(0.3))
+                .fill(Color.secondary.opacity(0.3))
                 .frame(height: 1)
                 .frame(maxWidth: 300)
             
@@ -181,12 +181,12 @@ struct WikipediaInfoPanel: View {
                 ForEach(wikipediaInfo.primaryInfoFields) { field in
                     HStack(alignment: .top, spacing: 8) {
                         Text(field.key + ":")
-                            .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
-                            .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
                         
                         Text(field.value)
-                            .font(.system(size: TVOSDesign.Typography.footnote, weight: .regular))
-                            .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.secondary)
                         
                         Spacer()
                     }
@@ -200,11 +200,11 @@ struct WikipediaInfoPanel: View {
     
     private var backgroundColor: Color {
         if isPressed {
-            return TVOSDesign.Colors.pressedCardBackground
+            return Color.secondary.opacity(0.4)
         } else if isFocused {
-            return TVOSDesign.Colors.focusedCardBackground
+            return Color.white.opacity(0.2)
         } else {
-            return TVOSDesign.Colors.cardBackground
+            return Color.secondary.opacity(0.2)
         }
     }
     
@@ -227,21 +227,23 @@ struct WikipediaInfoPanel: View {
 
 // MARK: - Preview
 
-#Preview {
-    ZStack {
-        TVOSDesign.Colors.background
-            .ignoresSafeArea()
-        
-        VStack {
-            WikipediaInfoPanel(
-                wikipediaInfo: WikipediaInfo.example,
-                onTap: {
-                    print("Wikipedia-Panel getappt!")
-                }
-            )
-            .padding()
+struct WikipediaInfoPanel_Previews: PreviewProvider {
+    static var previews: some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
             
-            Spacer()
+            VStack {
+                WikipediaInfoPanel(
+                    wikipediaInfo: WikipediaInfo.example,
+                    onTap: {
+                        print("Wikipedia-Panel getappt!")
+                    }
+                )
+                .padding()
+                
+                Spacer()
+            }
         }
     }
 }

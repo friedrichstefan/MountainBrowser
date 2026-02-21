@@ -23,6 +23,17 @@ struct CursorModeWebView: View {
     let preferences: BrowserPreferences
     let onNavigationAction: (URLRequest) -> Bool
     let onBack: () -> Void
+    let onPlayPause: () -> Void
+    let onShowSettings: () -> Void
+    
+    // Computed Properties für Navigation Bar
+    private var urlString: String {
+        url?.absoluteString ?? ""
+    }
+    
+    private var pageTitle: String {
+        title.isEmpty ? "Laden..." : title
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -30,7 +41,7 @@ struct CursorModeWebView: View {
                 Color.clear
                 
                 VStack(spacing: 0) {
-                    infoHeader
+                    navigationBar
                     
                     webViewWithCursor(geometry: geometry)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -53,6 +64,9 @@ struct CursorModeWebView: View {
                 },
                 onMenuPress: {
                     onBack()
+                },
+                onPlayPause: {
+                    onPlayPause()
                 }
             )
             .overlay(
@@ -68,58 +82,112 @@ struct CursorModeWebView: View {
         .ignoresSafeArea(.all, edges: .all)
     }
     
-    // MARK: - Info Header
-    private var infoHeader: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 20) {
-                if isLoading {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .blue))
-                        .scaleEffect(0.8)
-                } else {
-                    Image(systemName: "globe")
-                        .foregroundColor(.blue)
-                        .font(.title3)
+    // MARK: - Navigation Bar (Nicht-interaktiv im Cursor-Modus)
+    private var navigationBar: some View {
+        // Hauptcontainer für alle Navigations-Elemente in der oberen Leiste
+        HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            // Zurück-Button (Links) - NICHT-INTERAKTIV
+            TVOSNavButton(
+                icon: "chevron.left",
+                label: "Zurück",
+                isEnabled: false  // Nicht fokussierbar im Cursor-Modus
+            ) {
+                // Leer - wird nicht aufgerufen
+            }
+            
+            // URL/Titel-Anzeige (Mittig, nimmt verfügbaren Platz ein) - NICHT-INTERAKTIV
+            SafariURLBar(
+                urlString: urlString,
+                pageTitle: pageTitle,
+                isCursorMode: true  // Spezielle nicht-interaktive Version
+            )
+            .frame(maxWidth: .infinity)
+            
+            // Navigations-Buttons (Rechts) - NICHT-INTERAKTIV
+            HStack(spacing: 16) {
+                // Browser Zurück-Button
+                TVOSNavIconButton(
+                    icon: "arrow.left",
+                    isEnabled: false  // Nicht fokussierbar
+                ) {
+                    // Leer
                 }
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    if !title.isEmpty {
-                        Text(title)
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                    }
-                    
-                    if let url = url {
-                        Text(url.absoluteString)
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .lineLimit(1)
-                    }
+                // Browser Vorwärts-Button
+                TVOSNavIconButton(
+                    icon: "arrow.right",
+                    isEnabled: false  // Nicht fokussierbar
+                ) {
+                    // Leer
                 }
                 
-                Spacer()
+                // Reload/Stop Button
+                TVOSNavIconButton(
+                    icon: isLoading ? "xmark" : "arrow.clockwise",
+                    isEnabled: false  // Nicht fokussierbar
+                ) {
+                    // Leer
+                }
                 
+                // Cursor-Modus Badge statt Einstellungen-Button
                 HStack(spacing: 8) {
                     Image(systemName: "cursorarrow.click.2")
                         .foregroundColor(.blue)
+                        .font(.system(size: 20, weight: .semibold))
                     Text("Cursor Modus")
-                        .font(.caption)
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .semibold))
                         .foregroundColor(.blue)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.2))
-                .cornerRadius(8)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.blue.opacity(0.15))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                        )
+                )
             }
-            .padding(.horizontal, 40)
-            .padding(.vertical, 20)
-            .background(Color.clear)
-            
-            Rectangle()
-                .fill(Color.gray.opacity(0.3))
-                .frame(height: 1)
         }
+        // BREITERES PADDING: Reduziert um schwarze Streifen an den Seiten zu eliminieren
+        .padding(.horizontal, 20) // Reduziert von TVOSDesign.Spacing.safeAreaHorizontal
+        .padding(.vertical, 28)    // Leicht erhöht für mehr Höhe
+        .background(
+            // VOLLBREITER HINTERGRUND: Erstreckt sich über den gesamten Bildschirm
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    // Oben: Nahezu opak (sehr dunkelgrau)
+                    TVOSDesign.Colors.background.opacity(0.98),
+                    // Mitte: Etwas transparenter
+                    TVOSDesign.Colors.background.opacity(0.92),
+                    // Unten: Komplett transparent (sanfter Übergang zur Webseite)
+                    TVOSDesign.Colors.background.opacity(0.0)
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            // WICHTIG: Ignoriert Safe Areas komplett für vollständige Breite
+            .ignoresSafeArea(.all) // Geändert von .ignoresSafeArea(.all, edges: .top)
+        )
+        // ZUSÄTZLICHER VOLLBREITER OVERLAY: Eliminiert definitiv schwarze Ränder
+        .overlay(
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.3),
+                            Color.clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .ignoresSafeArea(.all)
+                .allowsHitTesting(false) // Verhindert Interaktion mit dem Overlay
+        )
+        // WICHTIG: Komplette Navigation Bar nicht-interaktiv machen
+        .allowsHitTesting(false)
     }
     
     // MARK: - WebView with Cursor
@@ -607,7 +675,9 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
         url: $url,
         preferences: BrowserPreferences(),
         onNavigationAction: { _ in true },
-        onBack: { }
+        onBack: { },
+        onPlayPause: { },
+        onShowSettings: { }
     )
     .preferredColorScheme(.dark)
 }

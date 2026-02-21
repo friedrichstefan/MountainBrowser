@@ -214,9 +214,10 @@ struct MainBrowserView: View {
                     )
                 )
             } else {
-                FullscreenWebView(
+                FullscreenWebViewWithSession(
                     url: result.url,
                     title: result.title,
+                    sessionManager: sessionManager,
                     isPresented: .init(
                         get: { selectedResult != nil },
                         set: { if !$0 { selectedResult = nil } }

@@ -13,6 +13,7 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
     let screenSize: CGSize
     let onTap: () -> Void
     let onMenuPress: () -> Void
+    let onPlayPause: () -> Void
     
     func makeUIView(context: Context) -> CursorGestureView {
         let view = CursorGestureView()
@@ -26,6 +27,7 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
         context.coordinator.screenSize = screenSize
         context.coordinator.onTap = onTap
         context.coordinator.onMenuPress = onMenuPress
+        context.coordinator.onPlayPause = onPlayPause
     }
     
     func makeCoordinator() -> Coordinator {
@@ -33,7 +35,8 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
             cursorPosition: $cursorPosition,
             screenSize: screenSize,
             onTap: onTap,
-            onMenuPress: onMenuPress
+            onMenuPress: onMenuPress,
+            onPlayPause: onPlayPause
         )
     }
     
@@ -42,17 +45,19 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
         var screenSize: CGSize
         var onTap: () -> Void
         var onMenuPress: () -> Void
+        var onPlayPause: () -> Void
         
         // Cursor movement settings
         private let sensitivity: CGFloat = 3.0
         private let acceleration: CGFloat = 1.5
         private let deadZone: CGFloat = 0.1
         
-        init(cursorPosition: Binding<CGPoint>, screenSize: CGSize, onTap: @escaping () -> Void, onMenuPress: @escaping () -> Void) {
+        init(cursorPosition: Binding<CGPoint>, screenSize: CGSize, onTap: @escaping () -> Void, onMenuPress: @escaping () -> Void, onPlayPause: @escaping () -> Void) {
             self._cursorPosition = cursorPosition
             self.screenSize = screenSize
             self.onTap = onTap
             self.onMenuPress = onMenuPress
+            self.onPlayPause = onPlayPause
         }
         
         func updateCursorPosition(_ binding: Binding<CGPoint>) {
@@ -95,6 +100,10 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
             onMenuPress()
         }
         
+        func handlePlayPause() {
+            onPlayPause()
+        }
+        
         private func clamp(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
             return Swift.max(min, Swift.min(max, value))
         }
@@ -106,6 +115,7 @@ protocol CursorGestureViewDelegate: AnyObject {
     func handlePanGesture(_ gesture: UIPanGestureRecognizer)
     func handleTapGesture(_ gesture: UITapGestureRecognizer)
     func handleMenuPress()
+    func handlePlayPause()
 }
 
 class CursorGestureView: UIView {
@@ -222,6 +232,15 @@ class CursorGestureView: UIView {
                     self?.delegate?.handleMenuPress()
                 }
             }
+            
+            // Play/Pause button für Extended Gamepad
+            if let playPauseButton = extendedGamepad.buttonOptions {
+                playPauseButton.valueChangedHandler = { [weak self] (button, value, pressed) in
+                    if pressed {
+                        self?.delegate?.handlePlayPause()
+                    }
+                }
+            }
         }
     }
     
@@ -269,6 +288,9 @@ class CursorGestureView: UIView {
             if press.type == .select {
                 print("🔥 SELECT BUTTON GEDRÜCKT - direkter Tap!")
                 delegate?.handleTapGesture(UITapGestureRecognizer())
+            } else if press.type == .playPause {
+                print("🔥 PLAY/PAUSE BUTTON GEDRÜCKT!")
+                delegate?.handlePlayPause()
             }
         }
         super.pressesEnded(presses, with: event)
@@ -285,6 +307,7 @@ struct CursorGestureModifier: ViewModifier {
     let screenSize: CGSize
     let onTap: () -> Void
     let onMenuPress: () -> Void
+    let onPlayPause: () -> Void
     
     func body(content: Content) -> some View {
         content
@@ -293,7 +316,8 @@ struct CursorGestureModifier: ViewModifier {
                     cursorPosition: $cursorPosition,
                     screenSize: screenSize,
                     onTap: onTap,
-                    onMenuPress: onMenuPress
+                    onMenuPress: onMenuPress,
+                    onPlayPause: onPlayPause
                 )
             )
     }
@@ -304,13 +328,15 @@ extension View {
         cursorPosition: Binding<CGPoint>,
         screenSize: CGSize,
         onTap: @escaping () -> Void,
-        onMenuPress: @escaping () -> Void = {}
+        onMenuPress: @escaping () -> Void = {},
+        onPlayPause: @escaping () -> Void = {}
     ) -> some View {
         modifier(CursorGestureModifier(
             cursorPosition: cursorPosition,
             screenSize: screenSize,
             onTap: onTap,
-            onMenuPress: onMenuPress
+            onMenuPress: onMenuPress,
+            onPlayPause: onPlayPause
         ))
     }
 }

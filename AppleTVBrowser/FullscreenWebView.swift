@@ -19,35 +19,114 @@ struct FullscreenWebView: View {
     
     @State private var urlObject: URL?
     @State private var showingSettings = false
+    @State private var showModeToast = false
+    @State private var currentModeText = ""
+    @State private var currentViewMode: BrowserViewMode = .scrollView  // NEU: Separate State für View-Rendering
     
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
             Group {
-                switch sessionManager.preferences.viewMode {
+                switch currentViewMode {  // Verwende lokale State statt sessionManager.preferences.viewMode
                 case .scrollView:
                     ScrollModeWebView(
                         url: url,
                         title: title,
                         onBack: { dismiss() },
-                        onShowSettings: { showingSettings = true }
+                        onShowSettings: { showingSettings = true },
+                        onPlayPause: { toggleViewMode() }
                     )
                 case .cursorView:
                     CursorModeWebView(
                         url: $urlObject,
                         preferences: sessionManager.preferences,
                         onNavigationAction: { _ in true },
-                        onBack: { dismiss() }
+                        onBack: { dismiss() },
+                        onPlayPause: { toggleViewMode() },
+                        onShowSettings: { showingSettings = true }
                     )
                 }
+            }
+            
+            // Toast für Modus-Wechsel
+            if showModeToast {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        modeToast
+                        Spacer()
+                    }
+                    .padding(.bottom, 80)
+                }
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .move(edge: .bottom).combined(with: .opacity)
+                ))
+                .zIndex(1000)
             }
         }
         .onAppear {
             urlObject = URL(string: url)
+            // Sync lokale State mit SessionManager beim Erscheinen
+            currentViewMode = sessionManager.preferences.viewMode
         }
         .sheet(isPresented: $showingSettings) {
             BrowserSettingsView(sessionManager: sessionManager)
+        }
+    }
+    
+    // MARK: - Toast für Modus-Wechsel
+    private var modeToast: some View {
+        HStack(spacing: 16) {
+            Image(systemName: currentViewMode == .cursorView ? "cursorarrow.click.2" : "scroll")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(.white)
+            
+            Text(currentModeText)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, 32)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.black.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                )
+        )
+        .shadow(color: .black.opacity(0.5), radius: 20, y: 10)
+    }
+    
+    // MARK: - Toggle View Mode
+    private func toggleViewMode() {
+        print("🔥 toggleViewMode aufgerufen - Aktueller Modus: \(currentViewMode)")
+        
+        let newMode: BrowserViewMode = currentViewMode == .scrollView ? .cursorView : .scrollView
+        
+        print("🔄 Wechsel zu: \(newMode)")
+        
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            // WICHTIG: Erst lokale State ändern (für UI-Update)
+            currentViewMode = newMode
+            // Dann SessionManager aktualisieren (für Persistierung)
+            sessionManager.preferences.viewMode = newMode
+            sessionManager.savePreferences()
+            
+            currentModeText = newMode == .cursorView ? "🎮 Cursor-Modus aktiviert" : "📜 Scroll-Modus aktiviert"
+            showModeToast = true
+        }
+        
+        print("✅ Modus gewechselt zu: \(newMode)")
+        
+        // Toast nach 2.5 Sekunden ausblenden
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(.easeOut(duration: 0.5)) {
+                showModeToast = false
+            }
         }
     }
 }
@@ -58,6 +137,7 @@ struct ScrollModeWebView: View {
     let title: String
     let onBack: () -> Void
     let onShowSettings: () -> Void
+    let onPlayPause: () -> Void
     
     @State private var urlString: String = ""
     @State private var isLoading: Bool = false
@@ -95,9 +175,7 @@ struct ScrollModeWebView: View {
                     }
                 },
                 onPlayPause: {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8, blendDuration: 0.3)) {
-                        showNavigationBar.toggle()
-                    }
+                    onPlayPause()
                 }
             )
             .padding(.top, showNavigationBar ? 100 : 0)
@@ -617,7 +695,8 @@ class WebViewHostController: UIViewController {
         ])
         
         let webView = webViewClass.init()
-        webView.backgroundColor = .black
+        webView.backgroundColor = .clear
+        webView.isOpaque = false
         webView.isUserInteractionEnabled = false
         webView.frame = view.bounds
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -631,10 +710,21 @@ class WebViewHostController: UIViewController {
         if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
             scrollView.isScrollEnabled = false
             scrollView.bounces = false
+            scrollView.backgroundColor = .clear
+            scrollView.isOpaque = false
+            
+            // WICHTIG: Content Insets auf null setzen um schwarze Ränder zu vermeiden
+            scrollView.contentInset = .zero
+            scrollView.scrollIndicatorInsets = .zero
             if #available(tvOS 11.0, *) {
                 scrollView.contentInsetAdjustmentBehavior = .never
             }
         }
+        
+        // WICHTIG: scalesPageToFit aktivieren für automatische Anpassung
+        webView.setValue(true, forKey: "scalesPageToFit")
+        webView.setValue(true, forKey: "allowsInlineMediaPlayback")
+        webView.setValue(false, forKey: "mediaPlaybackRequiresUserAction")
     }
     
     // MARK: - MPRemoteCommandCenter Setup
@@ -944,6 +1034,17 @@ class WebViewHostController: UIViewController {
                 currentURL = url.absoluteString
             }
             
+            // Layer-Hintergrund explizit transparent setzen
+            if let layer = webView.value(forKey: "layer") as? CALayer {
+                layer.backgroundColor = UIColor.clear.cgColor
+            }
+            
+            // Viewport und Zoom nach kurzer Verzögerung anwenden
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self.executeJavaScript(webView, script: self.viewportAndZoomJavaScript)
+                print("📐 Viewport und Zoom für ScrollMode angewendet")
+            }
+            
             self.scrollController?.webView = webView
             self.delegate?.didFinishLoading(canGoBack: canGoBack, canGoForward: canGoForward, title: title, url: currentURL)
         }
@@ -958,6 +1059,126 @@ class WebViewHostController: UIViewController {
     @objc func webView(_ webView: UIView, shouldStartLoadWith request: URLRequest, navigationType: Int) -> Bool {
         return true
     }
+    
+    // MARK: - Viewport & Zoom JavaScript
+    /// Dieses Script passt die Seite an die Bildschirmbreite an
+    /// und vergrößert dann den Text für bessere Lesbarkeit auf TV
+    private var viewportAndZoomJavaScript: String {
+        """
+        (function() {
+            // 1. Viewport Meta-Tag setzen/ersetzen für korrekte Breitenanpassung
+            var viewport = document.querySelector('meta[name="viewport"]');
+            if (viewport) {
+                viewport.remove();
+            }
+            
+            viewport = document.createElement('meta');
+            viewport.name = 'viewport';
+            viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes';
+            document.head.insertBefore(viewport, document.head.firstChild);
+            
+            // 2. CSS für korrekte Anpassung und größeren Text
+            var style = document.getElementById('tvBrowserStyle');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'tvBrowserStyle';
+                document.head.appendChild(style);
+            }
+            
+            style.textContent = `
+                /* Verhindere horizontales Overflow und setze transparenten Hintergrund */
+                html, body {
+                    max-width: 100vw !important;
+                    overflow-x: hidden !important;
+                    background-color: transparent !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
+                
+                /* Bilder und Videos responsive machen */
+                img, video, iframe, embed, object {
+                    max-width: 100% !important;
+                    height: auto !important;
+                }
+                
+                /* Tabellen responsive */
+                table {
+                    max-width: 100% !important;
+                    display: block !important;
+                    overflow-x: auto !important;
+                }
+                
+                /* Pre/Code Blöcke umbrechen */
+                pre, code {
+                    white-space: pre-wrap !important;
+                    word-wrap: break-word !important;
+                    max-width: 100% !important;
+                }
+                
+                /* Fixe Breiten überschreiben */
+                * {
+                    max-width: 100vw !important;
+                }
+                
+                /* TEXT VERGRÖSSERUNG für TV */
+                html {
+                    font-size: 125% !important;
+                }
+                
+                body {
+                    font-size: 1.1em !important;
+                    line-height: 1.5 !important;
+                }
+                
+                /* Überschriften größer */
+                h1 { font-size: 2em !important; }
+                h2 { font-size: 1.75em !important; }
+                h3 { font-size: 1.5em !important; }
+                h4 { font-size: 1.25em !important; }
+                
+                /* Links besser sichtbar */
+                a {
+                    text-decoration: underline !important;
+                }
+                
+                /* Buttons größer für TV */
+                button, input[type="button"], input[type="submit"], .btn {
+                    min-height: 44px !important;
+                    padding: 12px 20px !important;
+                    font-size: 1.1em !important;
+                }
+            `;
+            
+            // 3. Alle fixierten Breiten-Attribute entfernen
+            var allElements = document.querySelectorAll('[width]');
+            allElements.forEach(function(el) {
+                if (el.tagName !== 'IMG' && el.tagName !== 'VIDEO') {
+                    el.removeAttribute('width');
+                }
+            });
+            
+            // 4. Inline-Styles mit fixen Breiten korrigieren
+            var elementsWithStyle = document.querySelectorAll('[style*="width"]');
+            elementsWithStyle.forEach(function(el) {
+                var style = el.getAttribute('style');
+                if (style && style.includes('width:') && style.includes('px')) {
+                    // Nur wenn es eine fixe Pixelbreite ist
+                    el.style.maxWidth = '100%';
+                }
+            });
+            
+            console.log('📐 Viewport und Zoom für ScrollMode angepasst');
+            return 'viewport_set';
+        })();
+        """
+    }
+    
+    private func executeJavaScript(_ webView: UIView, script: String) {
+        let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+        if webView.responds(to: jsSelector) {
+            _ = webView.perform(jsSelector, with: script)
+        }
+    }
 }
 
 // MARK: - Safari-Style URL Bar Component
@@ -965,10 +1186,17 @@ class WebViewHostController: UIViewController {
 struct SafariURLBar: View {
     let urlString: String
     let pageTitle: String
+    let isCursorMode: Bool
     
     @FocusState private var isFocused: Bool
     @State private var showTitle: Bool = false
     @State private var contentOpacity: Double = 1.0
+    
+    init(urlString: String, pageTitle: String, isCursorMode: Bool = false) {
+        self.urlString = urlString
+        self.pageTitle = pageTitle
+        self.isCursorMode = isCursorMode
+    }
     
     private var isSecure: Bool {
         urlString.hasPrefix("https://")
@@ -1079,6 +1307,23 @@ struct SafariURLBar: View {
         }
         
         return host
+    }
+}
+
+// MARK: - Wrapper für SessionManager Integration
+struct FullscreenWebViewWithSession: View {
+    let url: String
+    let title: String
+    let sessionManager: SessionManager
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        FullscreenWebView(
+            url: url,
+            title: title,
+            isPresented: $isPresented
+        )
+        .environmentObject(sessionManager)
     }
 }
 
