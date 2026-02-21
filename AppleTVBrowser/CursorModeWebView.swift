@@ -261,10 +261,13 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             }
             
             style.textContent = `
-                /* Verhindere horizontales Overflow */
+                /* Verhindere horizontales Overflow und setze transparenten Hintergrund */
                 html, body {
                     max-width: 100vw !important;
                     overflow-x: hidden !important;
+                    background-color: transparent !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
                 }
                 
                 /* Bilder und Videos responsive machen */
@@ -369,6 +372,13 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             scrollView.isOpaque = false
             // Horizontales Scrollen deaktivieren
             scrollView.showsHorizontalScrollIndicator = false
+            
+            // WICHTIG: Content Insets auf null setzen um schwarze Ränder zu vermeiden
+            scrollView.contentInset = .zero
+            scrollView.scrollIndicatorInsets = .zero
+            if #available(tvOS 11.0, *) {
+                scrollView.contentInsetAdjustmentBehavior = .never
+            }
         }
         
         // WICHTIG: scalesPageToFit aktivieren für automatische Anpassung
@@ -391,6 +401,11 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
         
         webView.backgroundColor = .clear
         webView.isOpaque = false
+        
+        // Layer-Hintergrund explizit transparent setzen
+        if let layer = webView.value(forKey: "layer") as? CALayer {
+            layer.backgroundColor = UIColor.clear.cgColor
+        }
         
         if let url = url, context.coordinator.lastLoadedURL != url {
             context.coordinator.lastLoadedURL = url
