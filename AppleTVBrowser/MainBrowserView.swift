@@ -138,26 +138,17 @@ struct MainBrowserView: View {
             
             VStack(spacing: 0) {
             EnhancedSearchBar(
-                searchQuery: Binding(
-                    get: {
-                        // Wenn ein aktiver Such-Tab existiert, zeige dessen Query
-                        if let activeTab = tabManager.activeTab, activeTab.isSearchTab {
-                            return activeTab.searchQuery ?? ""
-                        }
-                        // Bei neuen leeren Tabs: zeige SearchViewModel Query
-                        return searchViewModel.searchQuery
-                    },
-                    set: { newValue in
-                        searchViewModel.searchQuery = newValue
-                    }
-                ),
+                searchQuery: $searchViewModel.searchQuery,
                 isSearching: $searchViewModel.isSearching,
                 searchHistory: searchViewModel.searchHistory,
                 onSearch: {
                     Task {
-                        // Nur wenn tatsächlich eine Suche eingegeben wurde
                         if !searchViewModel.searchQuery.isEmpty {
                             await tabManager.createSearchTab(query: searchViewModel.searchQuery)
+                            // Sofort nach Tab-Erstellung: Query leeren für nächste Suche
+                            await MainActor.run {
+                                searchViewModel.searchQuery = ""
+                            }
                         }
                     }
                 },
