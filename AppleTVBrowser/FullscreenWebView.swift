@@ -153,8 +153,11 @@ struct ScrollModeWebView: View {
         }
     }
     
+    // MARK: - Navigationsleiste (Obere graue Leiste mit Buttons und URL-Anzeige)
     private var navigationBar: some View {
+        // Hauptcontainer für alle Navigations-Elemente in der oberen Leiste
         HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
+            // Zurück-Button (Links)
             TVOSNavButton(
                 icon: "chevron.left",
                 label: "Zurück",
@@ -163,13 +166,16 @@ struct ScrollModeWebView: View {
                 onBack()
             }
             
+            // URL/Titel-Anzeige (Mittig, nimmt verfügbaren Platz ein)
             SafariURLBar(
                 urlString: urlString,
                 pageTitle: pageTitle.isEmpty ? "Laden..." : pageTitle
             )
             .frame(maxWidth: .infinity)
             
+            // Navigations-Buttons (Rechts) - Vor/Zurück, Reload, Einstellungen
             HStack(spacing: 16) {
+                // Browser Zurück-Button
                 TVOSNavIconButton(
                     icon: "arrow.left",
                     isEnabled: canGoBack
@@ -177,6 +183,7 @@ struct ScrollModeWebView: View {
                     webViewController.goBack()
                 }
                 
+                // Browser Vorwärts-Button
                 TVOSNavIconButton(
                     icon: "arrow.right",
                     isEnabled: canGoForward
@@ -184,6 +191,7 @@ struct ScrollModeWebView: View {
                     webViewController.goForward()
                 }
                 
+                // Reload/Stop Button (wechselt Icon je nach Loading-Status)
                 TVOSNavIconButton(
                     icon: isLoading ? "xmark" : "arrow.clockwise",
                     isEnabled: true
@@ -191,7 +199,7 @@ struct ScrollModeWebView: View {
                     webViewController.reload()
                 }
                 
-                // Settings Button
+                // Einstellungen-Button
                 TVOSNavIconButton(
                     icon: "gearshape.fill",
                     isEnabled: true
@@ -200,19 +208,41 @@ struct ScrollModeWebView: View {
                 }
             }
         }
-        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
-        .padding(.vertical, 24)
+        // BREITERES PADDING: Reduziert um schwarze Streifen an den Seiten zu eliminieren
+        .padding(.horizontal, 20) // Reduziert von TVOSDesign.Spacing.safeAreaHorizontal
+        .padding(.vertical, 28)    // Leicht erhöht für mehr Höhe
         .background(
+            // VOLLBREITER HINTERGRUND: Erstreckt sich über den gesamten Bildschirm
             LinearGradient(
                 gradient: Gradient(colors: [
+                    // Oben: Nahezu opak (sehr dunkelgrau)
                     TVOSDesign.Colors.background.opacity(0.98),
-                    TVOSDesign.Colors.background.opacity(0.9),
+                    // Mitte: Etwas transparenter
+                    TVOSDesign.Colors.background.opacity(0.92),
+                    // Unten: Komplett transparent (sanfter Übergang zur Webseite)
                     TVOSDesign.Colors.background.opacity(0.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .ignoresSafeArea(.all, edges: .top)
+            // WICHTIG: Ignoriert Safe Areas komplett für vollständige Breite
+            .ignoresSafeArea(.all) // Geändert von .ignoresSafeArea(.all, edges: .top)
+        )
+        // ZUSÄTZLICHER VOLLBREITER OVERLAY: Eliminiert definitiv schwarze Ränder
+        .overlay(
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.3),
+                            Color.clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .ignoresSafeArea(.all)
+                .allowsHitTesting(false) // Verhindert Interaktion mit dem Overlay
         )
     }
     

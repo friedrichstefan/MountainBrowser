@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import Combine
 
 /// Browser-Ansichtsmodus
 enum BrowserViewMode: String, Codable, CaseIterable {
@@ -96,10 +97,11 @@ final class BrowserSession {
 }
 
 /// Session-Manager für Browser-State-Verwaltung
-@Observable
-final class SessionManager {
-    var currentSession: BrowserSession?
-    var preferences: BrowserPreferences
+import SwiftUI
+
+final class SessionManager: ObservableObject {
+    @Published var currentSession: BrowserSession?
+    @Published var preferences: BrowserPreferences
     
     // UserDefaults Keys
     private enum Keys {

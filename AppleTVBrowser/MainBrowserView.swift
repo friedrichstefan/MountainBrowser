@@ -90,10 +90,12 @@ enum TVOSDesign {
 struct MainBrowserView: View {
     @StateObject private var searchViewModel = SearchViewModel()
     @StateObject private var tabManager = TabManager()
+    @StateObject private var sessionManager = SessionManager()
     @Environment(\.modelContext) private var modelContext
     
     @State private var selectedResult: SearchResult?
     @State private var showTabGrid: Bool = false
+    @State private var showSettings: Bool = false
     @FocusState private var isSearchFocused: Bool
     @FocusState private var focusedSection: FocusSection?
     
@@ -230,6 +232,9 @@ struct MainBrowserView: View {
                     )
                 )
             }
+        }
+        .fullScreenCover(isPresented: $showSettings) {
+            BrowserSettingsView(sessionManager: sessionManager)
         }
     }
     
@@ -587,6 +592,16 @@ struct MainBrowserView: View {
                 }
                 .padding(.top, TVOSDesign.Spacing.cardSpacing)
             }
+            
+            // Einstellungsbutton
+            TVOSSettingsButton(
+                title: "Einstellungen",
+                subtitle: "Browser konfigurieren",
+                icon: "gearshape.fill"
+            ) {
+                showSettings = true
+            }
+            .padding(.top, TVOSDesign.Spacing.cardSpacing)
             
             Spacer()
             Spacer()
@@ -1055,6 +1070,111 @@ struct TVOSChipButton: View {
         .zIndex(isFocused ? 100 : 0)
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
         .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
+    }
+}
+
+// MARK: - tvOS Settings Button Component
+
+struct TVOSSettingsButton: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let action: () -> Void
+    
+    @FocusState private var isFocused: Bool
+    @State private var isPressed: Bool = false
+    
+    var body: some View {
+        Button(action: {
+            withAnimation(TVOSDesign.Animation.pressSpring) {
+                isPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(TVOSDesign.Animation.pressSpring) {
+                    isPressed = false
+                }
+                action()
+            }
+        }) {
+            HStack(spacing: 20) {
+                // Icon - kompakter für flaches Design
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    TVOSDesign.Colors.systemBlue.opacity(0.3),
+                                    TVOSDesign.Colors.systemBlue.opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 60, height: 60)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundColor(TVOSDesign.Colors.systemBlue)
+                }
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.system(size: TVOSDesign.Typography.title3, weight: .bold))
+                        .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                        .multilineTextAlignment(.leading)
+                    
+                    Text(subtitle)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
+                        .foregroundColor(TVOSDesign.Colors.secondaryLabel)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Pfeil-Icon für bessere Erkennbarkeit
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+                    .opacity(isFocused ? 1.0 : 0.6)
+            }
+            .padding(20)
+            .frame(maxWidth: 600)
+            .frame(height: 120) 
+            .background(
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .fill(backgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
+                    .stroke(
+                        isFocused ? TVOSDesign.Colors.systemBlue : Color.clear,
+                        lineWidth: isFocused ? 3 : 0
+                    )
+            )
+            .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
+            .offset(y: isFocused ? -TVOSDesign.Focus.cardLiftOffset : 0)
+            .shadow(
+                color: Color.black.opacity(isFocused ? 0.4 : 0.1),
+                radius: isFocused ? TVOSDesign.Focus.shadowRadius : 8,
+                y: isFocused ? 8 : 2
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .focused($isFocused)
+        .zIndex(isFocused ? 100 : 0)
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+        .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
+    }
+    
+    private var backgroundColor: Color {
+        if isPressed {
+            return TVOSDesign.Colors.pressedCardBackground
+        } else if isFocused {
+            return TVOSDesign.Colors.focusedCardBackground
+        } else {
+            return TVOSDesign.Colors.cardBackground
+        }
     }
 }
 

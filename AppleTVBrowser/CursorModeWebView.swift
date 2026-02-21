@@ -27,24 +27,23 @@ struct CursorModeWebView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Background
-                Color.black.ignoresSafeArea()
+                Color.clear
                 
                 VStack(spacing: 0) {
-                    // Info Header (nicht interaktiv)
                     infoHeader
                     
-                    // WebView mit Cursor
                     webViewWithCursor(geometry: geometry)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
             .onAppear {
                 cursorManager.updateScreenSize(geometry.size)
             }
             .onChange(of: geometry.size) { _, newSize in
                 cursorManager.updateScreenSize(newSize)
             }
-            // WICHTIGER FIX: Cursor Gesture Handler MUSS ÜBER DEM CURSOR OVERLAY stehen!
             .cursorGestureHandler(
                 cursorPosition: $cursorManager.position,
                 screenSize: geometry.size,
@@ -56,26 +55,23 @@ struct CursorModeWebView: View {
                     onBack()
                 }
             )
-            // Cursor Overlay (nur visuell, keine Gestures!)
             .overlay(
                 CursorOverlay(
                     position: $cursorManager.position,
                     screenSize: geometry.size,
                     onTap: {
-                        // Dieser Callback wird NICHT mehr verwendet!
                         print("⚠️ CursorOverlay onTap - sollte nicht aufgerufen werden!")
                     }
                 )
             )
         }
+        .ignoresSafeArea(.all, edges: .all)
     }
     
     // MARK: - Info Header
     private var infoHeader: some View {
         VStack(spacing: 0) {
-            // URL und Status Bar
             HStack(spacing: 20) {
-                // Loading Indicator
                 if isLoading {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .blue))
@@ -86,7 +82,6 @@ struct CursorModeWebView: View {
                         .font(.title3)
                 }
                 
-                // URL Display
                 VStack(alignment: .leading, spacing: 4) {
                     if !title.isEmpty {
                         Text(title)
@@ -105,7 +100,6 @@ struct CursorModeWebView: View {
                 
                 Spacer()
                 
-                // Cursor Mode Indicator
                 HStack(spacing: 8) {
                     Image(systemName: "cursorarrow.click.2")
                         .foregroundColor(.blue)
@@ -120,9 +114,8 @@ struct CursorModeWebView: View {
             }
             .padding(.horizontal, 40)
             .padding(.vertical, 20)
-            .background(Color.black.opacity(0.9))
+            .background(Color.clear)
             
-            // Thin separator line
             Rectangle()
                 .fill(Color.gray.opacity(0.3))
                 .frame(height: 1)
@@ -145,23 +138,22 @@ struct CursorModeWebView: View {
                 contentSize = size
             }
         )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .clipped()
     }
     
-    // MARK: - Actions (KORRIGIERTE IMPLEMENTIERUNG)
+    // MARK: - Actions
     private func performCursorClick() {
         print("🎯 performCursorClick aufgerufen!")
         print("🎯 Cursor Position: \(cursorManager.position)")
         print("🎯 WebView Ref: \(webViewRef != nil ? "verfügbar" : "NIL!")")
         
-        guard let webView = webViewRef else { 
+        guard let webView = webViewRef else {
             print("❌ Kein WebView verfügbar!")
-            return 
+            return
         }
         
-        // KORREKTUR: Einfache Verwendung der window.performCursorClick Funktion
-        // Die Koordinaten-Umrechnung passiert bereits im JavaScript
         let script = """
             console.log('🎯 JavaScript Klick wird ausgeführt');
             
@@ -171,7 +163,6 @@ struct CursorModeWebView: View {
             } else {
                 console.log('❌ window.performCursorClick nicht verfügbar');
                 
-                // Fallback: Direkte Klick-Implementierung
                 var element = document.elementFromPoint(window.cursorX, window.cursorY);
                 if (element) {
                     console.log('🎯 Fallback - Element gefunden:', element.tagName);
@@ -228,7 +219,7 @@ extension CursorModeWebView {
     }
 }
 
-// MARK: - Improved CursorWebView Integration
+// MARK: - CursorWebView Integration
 struct CursorWebViewIntegrated: UIViewRepresentable {
     @Binding var url: URL?
     @Binding var cursorPosition: CGPoint
@@ -244,33 +235,149 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     
     typealias UIViewType = UIView
     
+    // MARK: - Viewport & Zoom JavaScript
+    /// Dieses Script passt die Seite an die Bildschirmbreite an
+    /// und vergrößert dann den Text für bessere Lesbarkeit auf TV
+    private var viewportAndZoomJavaScript: String {
+        """
+        (function() {
+            // 1. Viewport Meta-Tag setzen/ersetzen für korrekte Breitenanpassung
+            var viewport = document.querySelector('meta[name="viewport"]');
+            if (viewport) {
+                viewport.remove();
+            }
+            
+            viewport = document.createElement('meta');
+            viewport.name = 'viewport';
+            viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes';
+            document.head.insertBefore(viewport, document.head.firstChild);
+            
+            // 2. CSS für korrekte Anpassung und größeren Text
+            var style = document.getElementById('tvBrowserStyle');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'tvBrowserStyle';
+                document.head.appendChild(style);
+            }
+            
+            style.textContent = `
+                /* Verhindere horizontales Overflow */
+                html, body {
+                    max-width: 100vw !important;
+                    overflow-x: hidden !important;
+                }
+                
+                /* Bilder und Videos responsive machen */
+                img, video, iframe, embed, object {
+                    max-width: 100% !important;
+                    height: auto !important;
+                }
+                
+                /* Tabellen responsive */
+                table {
+                    max-width: 100% !important;
+                    display: block !important;
+                    overflow-x: auto !important;
+                }
+                
+                /* Pre/Code Blöcke umbrechen */
+                pre, code {
+                    white-space: pre-wrap !important;
+                    word-wrap: break-word !important;
+                    max-width: 100% !important;
+                }
+                
+                /* Fixe Breiten überschreiben */
+                * {
+                    max-width: 100vw !important;
+                }
+                
+                /* TEXT VERGRÖSSERUNG für TV */
+                html {
+                    font-size: 125% !important;
+                }
+                
+                body {
+                    font-size: 1.1em !important;
+                    line-height: 1.5 !important;
+                }
+                
+                /* Überschriften größer */
+                h1 { font-size: 2em !important; }
+                h2 { font-size: 1.75em !important; }
+                h3 { font-size: 1.5em !important; }
+                h4 { font-size: 1.25em !important; }
+                
+                /* Links besser sichtbar */
+                a {
+                    text-decoration: underline !important;
+                }
+                
+                /* Buttons größer für TV */
+                button, input[type="button"], input[type="submit"], .btn {
+                    min-height: 44px !important;
+                    padding: 12px 20px !important;
+                    font-size: 1.1em !important;
+                }
+            `;
+            
+            // 3. Alle fixierten Breiten-Attribute entfernen
+            var allElements = document.querySelectorAll('[width]');
+            allElements.forEach(function(el) {
+                if (el.tagName !== 'IMG' && el.tagName !== 'VIDEO') {
+                    el.removeAttribute('width');
+                }
+            });
+            
+            // 4. Inline-Styles mit fixen Breiten korrigieren
+            var elementsWithStyle = document.querySelectorAll('[style*="width"]');
+            elementsWithStyle.forEach(function(el) {
+                var style = el.getAttribute('style');
+                if (style && style.includes('width:') && style.includes('px')) {
+                    // Nur wenn es eine fixe Pixelbreite ist
+                    el.style.maxWidth = '100%';
+                }
+            });
+            
+            console.log('📐 Viewport und Zoom für TV angepasst');
+            return 'viewport_set';
+        })();
+        """
+    }
+    
     func makeUIView(context: Context) -> UIView {
         print("🔧 WebView wird erstellt...")
         
         guard let webViewClass = NSClassFromString("UIWebView") as? UIView.Type else {
             print("❌ UIWebView Klasse nicht gefunden!")
-            return UIView()
+            let fallbackView = UIView()
+            fallbackView.backgroundColor = .clear
+            return fallbackView
         }
         
         let webView = webViewClass.init()
-        webView.backgroundColor = .black
+        
+        webView.backgroundColor = .clear
+        webView.isOpaque = false
+        
         webView.setValue(context.coordinator, forKey: "delegate")
         
-        // Configure webView properties
         if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
-            scrollView.isScrollEnabled = false
-            scrollView.bounces = false
+            scrollView.isScrollEnabled = true
+            scrollView.bounces = true
+            scrollView.backgroundColor = .clear
+            scrollView.isOpaque = false
+            // Horizontales Scrollen deaktivieren
+            scrollView.showsHorizontalScrollIndicator = false
         }
         
-        // Set webView properties using setValue
+        // WICHTIG: scalesPageToFit aktivieren für automatische Anpassung
         webView.setValue(true, forKey: "scalesPageToFit")
         webView.setValue(true, forKey: "allowsInlineMediaPlayback")
         webView.setValue(false, forKey: "mediaPlaybackRequiresUserAction")
         
-        // Configure based on preferences
         configureWebView(webView, with: preferences)
         
-        // Store reference on main thread
         DispatchQueue.main.async {
             self.webViewRef = webView
             print("🔧 WebView Referenz gespeichert")
@@ -282,7 +389,9 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     func updateUIView(_ webView: UIView, context: Context) {
         context.coordinator.parent = self
         
-        // Load URL only if it has actually changed (prevent reload loops)
+        webView.backgroundColor = .clear
+        webView.isOpaque = false
+        
         if let url = url, context.coordinator.lastLoadedURL != url {
             context.coordinator.lastLoadedURL = url
             let request = URLRequest(url: url)
@@ -293,11 +402,8 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             }
         }
         
-        // Debounced cursor position update
-        debouncedCursorUpdate(webView, position: cursorPosition)
-        
-        // Update navigation state only when needed (prevent update loops)
-        updateNavigationStateIfNeeded(webView)
+        debouncedCursorUpdate(webView, position: cursorPosition, context: context)
+        updateNavigationStateIfNeeded(webView, context: context)
     }
     
     func makeCoordinator() -> Coordinator {
@@ -306,72 +412,44 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     
     // MARK: - Helper Methods
     
-    private func getCurrentURL(from webView: UIView) -> URL? {
-        if let request = webView.value(forKey: "request") as? URLRequest {
-            return request.url
-        }
-        return nil
-    }
-    
     private func updateCursorPositionInJS(_ webView: UIView, position: CGPoint) {
         let script = """
             if (typeof window.updateCursorPosition === 'function') {
                 window.updateCursorPosition(\(position.x), \(position.y));
-            } else {
-                console.log('⚠️ window.updateCursorPosition nicht verfügbar');
             }
         """
         executeJavaScript(webView, script: script)
     }
     
-    // MARK: - Debounced Updates
-    
-    private func debouncedCursorUpdate(_ webView: UIView, position: CGPoint) {
-        // Store the pending position
-        if let coordinator = webView.value(forKey: "delegate") as? Coordinator {
-            coordinator.pendingCursorPosition = position
-            
-            // Cancel existing timer
-            coordinator.cursorUpdateTimer?.invalidate()
-            
-            // Create new timer with debounce
-            coordinator.cursorUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { _ in
-                if let pendingPos = coordinator.pendingCursorPosition {
-                    // KORREKTE KOORDINATEN-TRANSFORMATION:
-                    // position = Screen-Koordinaten (absolut)
-                    // WebView braucht Koordinaten relativ zur WebView
-                    
-                    // Berechne WebView Frame in Screen-Koordinaten
-                    let webViewFrame = webView.frame
-                    let webViewScreenFrame = webView.superview?.convert(webViewFrame, to: nil) ?? webViewFrame
-                    
-                    // Transformiere absolute Screen-Koordinaten zu WebView-relativen Koordinaten
-                    let webViewRelativeX = pendingPos.x - webViewScreenFrame.origin.x
-                    let webViewRelativeY = pendingPos.y - webViewScreenFrame.origin.y
-                    
-                    print("🎯 COORDINATE TRANSFORM:")
-                    print("  Screen Position: (\(pendingPos.x), \(pendingPos.y))")
-                    print("  WebView Frame: \(webViewScreenFrame)")
-                    print("  WebView Relative: (\(webViewRelativeX), \(webViewRelativeY))")
-                    
-                    // Clamp zu WebView-Grenzen
-                    let clampedX = max(0, min(webViewFrame.width, webViewRelativeX))
-                    let clampedY = max(0, min(webViewFrame.height, webViewRelativeY))
-                    
-                    let finalPosition = CGPoint(x: clampedX, y: clampedY)
-                    print("  Final Position: (\(clampedX), \(clampedY))")
-                    
-                    self.updateCursorPositionInJS(webView, position: finalPosition)
-                    coordinator.pendingCursorPosition = nil
-                }
+    private func debouncedCursorUpdate(_ webView: UIView, position: CGPoint, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.pendingCursorPosition = position
+        
+        coordinator.cursorUpdateTimer?.invalidate()
+        
+        coordinator.cursorUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { _ in
+            if let pendingPos = coordinator.pendingCursorPosition {
+                let webViewFrame = webView.frame
+                let webViewScreenFrame = webView.superview?.convert(webViewFrame, to: nil) ?? webViewFrame
+                
+                let webViewRelativeX = pendingPos.x - webViewScreenFrame.origin.x
+                let webViewRelativeY = pendingPos.y - webViewScreenFrame.origin.y
+                
+                let clampedX = max(0, min(webViewFrame.width, webViewRelativeX))
+                let clampedY = max(0, min(webViewFrame.height, webViewRelativeY))
+                
+                let finalPosition = CGPoint(x: clampedX, y: clampedY)
+                
+                self.updateCursorPositionInJS(webView, position: finalPosition)
+                coordinator.pendingCursorPosition = nil
             }
         }
     }
     
-    private func updateNavigationStateIfNeeded(_ webView: UIView) {
-        // Use a flag to prevent recursive updates
-        guard let coordinator = webView.value(forKey: "delegate") as? Coordinator,
-              !coordinator.isUpdatingNavigationState else { return }
+    private func updateNavigationStateIfNeeded(_ webView: UIView, context: Context) {
+        let coordinator = context.coordinator
+        
+        guard !coordinator.isUpdatingNavigationState else { return }
         
         coordinator.isUpdatingNavigationState = true
         
@@ -386,7 +464,7 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
         }
     }
     
-    private func executeJavaScript(_ webView: UIView, script: String) {
+    func executeJavaScript(_ webView: UIView, script: String) {
         let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
         if webView.responds(to: jsSelector) {
             _ = webView.perform(jsSelector, with: script)
@@ -394,16 +472,14 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     }
     
     private func configureWebView(_ webView: UIView, with preferences: BrowserPreferences) {
-        // User agent - check if the property exists before setting
         if !preferences.userAgent.isEmpty {
-            // Try to set user agent safely
             if webView.responds(to: NSSelectorFromString("setCustomUserAgent:")) {
                 webView.setValue(preferences.userAgent, forKey: "customUserAgent")
             }
         }
     }
     
-    // MARK: - Coordinator (VERBESSERT)
+    // MARK: - Coordinator
     class Coordinator: NSObject {
         var parent: CursorWebViewIntegrated
         var lastLoadedURL: URL?
@@ -433,7 +509,6 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             DispatchQueue.main.async {
                 self.parent.isLoading = false
                 
-                // Get title
                 let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
                 if webView.responds(to: jsSelector) {
                     if let title = webView.perform(jsSelector, with: "document.title")?.takeUnretainedValue() as? String {
@@ -441,7 +516,6 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
                     }
                 }
                 
-                // Update URL only if it's different from what we expect
                 if let request = webView.value(forKey: "request") as? URLRequest,
                    let url = request.url,
                    self.parent.url != url {
@@ -452,7 +526,10 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             // JavaScript injizieren
             injectJavaScriptIfNeeded(webView)
             
-            // Report content size with debounce
+            // Viewport und Zoom anpassen
+            applyViewportAndZoom(webView)
+            
+            // Report content size
             reportContentSizeIfNeeded(webView)
         }
         
@@ -460,29 +537,30 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             print("💉 JavaScript wird injiziert...")
             
             let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
-            guard webView.responds(to: jsSelector) else { 
+            guard webView.responds(to: jsSelector) else {
                 print("❌ WebView unterstützt kein JavaScript!")
-                return 
+                return
             }
             
-            // Inject cursor JavaScript from CursorWebView
             parent.executeJavaScript(webView, script: CursorWebView.mouseEventJavaScript)
             parent.executeJavaScript(webView, script: CursorWebView.cursorStyleJavaScript)
             
-            // Test JavaScript availability
-            let testScript = "console.log('🔧 JavaScript verfügbar!'); typeof window.performCursorClick"
-            if let result = webView.perform(jsSelector, with: testScript)?.takeUnretainedValue() as? String {
-                print("🔧 JavaScript Test: \(result)")
-            }
-            
             hasInjectedJavaScript = true
+        }
+        
+        private func applyViewportAndZoom(_ webView: UIView) {
+            // Viewport und Zoom nach kurzer Verzögerung anwenden
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self.parent.executeJavaScript(webView, script: self.parent.viewportAndZoomJavaScript)
+                print("📐 Viewport und Zoom angewendet")
+            }
         }
         
         private func reportContentSizeIfNeeded(_ webView: UIView) {
             let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
             guard webView.responds(to: jsSelector) else { return }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 if let heightString = webView.perform(jsSelector, with: "document.body.scrollHeight")?.takeUnretainedValue() as? String,
                    let height = Double(heightString) {
                     let size = CGSize(width: webView.frame.width, height: CGFloat(height))
@@ -506,6 +584,7 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     }
 }
 
+// MARK: - Preview
 #Preview {
     @Previewable @State var url: URL? = URL(string: "https://www.apple.com")
     
