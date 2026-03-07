@@ -17,9 +17,9 @@ struct VideoResultGridView: View {
     ]
     
     var body: some View {
-        ScrollView {
+        // tvOS: Kein GeometryReader – ScrollView bekommt Größe von Parent
+        ScrollView(.vertical, showsIndicators: false) {
             if results.isEmpty {
-                // Empty State für keine Video-Ergebnisse
                 VideoEmptyStateView()
                     .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
                     .padding(.top, 100)
@@ -32,9 +32,10 @@ struct VideoResultGridView: View {
                     }
                 }
                 .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
-                .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom)
+                .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom + 100)
             }
         }
+        .accessibilityLabel("Videosuchergebnisse")
     }
 }
 
@@ -43,18 +44,15 @@ struct VideoResultGridView: View {
 struct VideoEmptyStateView: View {
     var body: some View {
         VStack(spacing: TVOSDesign.Spacing.cardSpacing) {
-            // Icon
             Image(systemName: "play.rectangle.on.rectangle")
                 .font(.system(size: 80, weight: .light))
                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
             
-            // Titel
             Text("Keine Videos gefunden")
                 .font(.system(size: TVOSDesign.Typography.title2, weight: .semibold))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
             
-            // Beschreibung
             VStack(spacing: 12) {
                 Text("Für diese Suchanfrage wurden keine Videos gefunden.")
                     .font(.system(size: TVOSDesign.Typography.body, weight: .regular))
@@ -91,7 +89,8 @@ struct VideoResultCard: View {
                 isPressed = true
             }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                     isPressed = false
                 }
@@ -101,14 +100,12 @@ struct VideoResultCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 // Video-Thumbnail Container (16:9 Aspect Ratio)
                 ZStack {
-                    // Placeholder mit 16:9 Ratio
                     RoundedRectangle(cornerRadius: 16)
                         .fill(TVOSDesign.Colors.cardBackground)
                         .aspectRatio(16.0/9.0, contentMode: .fit)
                         .overlay(
                             Group {
                                 if !imageLoaded && !imageError {
-                                    // Loading State
                                     VStack(spacing: 12) {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.secondaryLabel))
@@ -119,7 +116,6 @@ struct VideoResultCard: View {
                                             .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                                     }
                                 } else if imageError {
-                                    // Error State
                                     VStack(spacing: 12) {
                                         Image(systemName: "video.fill")
                                             .font(.system(size: 40))
@@ -135,7 +131,6 @@ struct VideoResultCard: View {
                             }
                         )
                     
-                    // Video Thumbnail
                     if let thumbnailURL = result.thumbnailURL, !imageError {
                         AsyncImage(url: URL(string: thumbnailURL)) { image in
                             image
@@ -151,8 +146,8 @@ struct VideoResultCard: View {
                             Color.clear
                         }
                         .onAppear {
-                            // Timeout für Thumbnail-Laden
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                            Task {
+                                try? await Task.sleep(for: .seconds(10))
                                 if !imageLoaded {
                                     imageError = true
                                 }
@@ -160,7 +155,7 @@ struct VideoResultCard: View {
                         }
                     }
                     
-                    // Play-Button Overlay (zentriert)
+                    // Play-Button Overlay
                     Circle()
                         .fill(Color.black.opacity(0.6))
                         .frame(width: 60, height: 60)
@@ -168,11 +163,11 @@ struct VideoResultCard: View {
                             Image(systemName: "play.fill")
                                 .font(.system(size: 24, weight: .semibold))
                                 .foregroundColor(.white)
-                                .offset(x: 2) // Visueller Ausgleich für Play-Icon
+                                .offset(x: 2)
                         )
                         .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
                     
-                    // Duration Badge (unten rechts)
+                    // Duration Badge
                     if let duration = result.duration {
                         VStack {
                             Spacer()
@@ -192,7 +187,7 @@ struct VideoResultCard: View {
                         }
                     }
                     
-                    // Source Badge (oben links, z.B. YouTube)
+                    // Source Badge
                     if let source = result.source {
                         VStack {
                             HStack {
@@ -220,7 +215,6 @@ struct VideoResultCard: View {
                     }
                 }
                 .overlay(
-                    // Focus Ring
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(isFocused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 3)
                 )
@@ -232,7 +226,7 @@ struct VideoResultCard: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 
-                // Channel/Domain + Views (falls vorhanden)
+                // Channel/Domain
                 HStack {
                     Text(result.displayURL)
                         .font(.system(size: TVOSDesign.Typography.caption))
@@ -255,16 +249,12 @@ struct VideoResultCard: View {
                 }
             }
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.card) // tvOS native Card-Style
         .focused($isFocused)
-        .scaleEffect(isPressed ? 0.95 : (isFocused ? 1.05 : 1.0))
-        .shadow(
-            color: isFocused ? Color.black.opacity(0.4) : Color.black.opacity(0.1),
-            radius: isFocused ? 20 : 8,
-            y: isFocused ? 10 : 4
-        )
+        .scaleEffect(isPressed ? 0.95 : 1.0)
         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: isFocused)
         .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
+        .accessibilityLabel("\(result.title). \(result.source ?? "Video")")
     }
     
     // MARK: - Helper Methods
@@ -321,17 +311,6 @@ struct VideoResultCard: View {
             imageHeight: 1080,
             duration: "1:23:15",
             source: "Vimeo"
-        ),
-        SearchResult(
-            title: "Cooking Masterclass: Italian Cuisine",
-            url: "https://dailymotion.com/example3",
-            description: "Professional cooking techniques",
-            contentType: .video,
-            thumbnailURL: "https://picsum.photos/640/360?random=3",
-            imageWidth: 1280,
-            imageHeight: 720,
-            duration: "45:30",
-            source: "Dailymotion"
         )
     ]
     

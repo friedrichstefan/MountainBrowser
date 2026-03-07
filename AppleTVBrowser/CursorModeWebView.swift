@@ -7,6 +7,15 @@
 
 import SwiftUI
 
+// MARK: - Preference Key für Button-Frame-Messung
+struct NavBarButtonFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [CursorModeWebView.NavBarButton: CGRect] = [:]
+    
+    static func reduce(value: inout [CursorModeWebView.NavBarButton: CGRect], nextValue: () -> [CursorModeWebView.NavBarButton: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
 struct CursorModeWebView: View {
     @Binding var url: URL?
     @State private var cursorManager = CursorPositionManager()
@@ -17,8 +26,18 @@ struct CursorModeWebView: View {
     @State private var contentSize: CGSize = .zero
     @State private var webViewRef: UIView?
     @State private var lastLoadedURL: URL? = nil
-    @State private var cursorUpdateTimer: Timer?
-    @State private var pendingCursorPosition: CGPoint?
+    
+    // NEU: Texteingabe-Sheet für Formulare
+    @State private var showTextInputSheet: Bool = false
+    @State private var textInputValue: String = ""
+    @State private var textInputPrompt: String = "Text eingeben"
+    @State private var pendingInputElementId: String? = nil
+    
+    // NEU: Hover-State für Navigation Bar Buttons
+    @State private var hoveredNavBarButton: NavBarButton? = nil
+    
+    // NEU: Gemessene Frames der Nav-Bar-Buttons (in globalem Koordinatensystem)
+    @State private var navBarButtonFrames: [NavBarButton: CGRect] = [:]
     
     let preferences: BrowserPreferences
     let onNavigationAction: (URLRequest) -> Bool
@@ -35,6 +54,35 @@ struct CursorModeWebView: View {
         title.isEmpty ? "Laden..." : title
     }
     
+    // Computed Property für Mobile-Modus basierend auf User-Agent
+    private var useMobileMode: Bool {
+        let userAgent = preferences.userAgent.lowercased()
+        return userAgent.contains("mobile") || userAgent.contains("iphone") || userAgent.contains("ipad")
+    }
+    
+    // FIX: Höhe der Navigation-Bar für Koordinaten-Korrektur
+    private let navigationBarHeight: CGFloat = 100
+    
+    // MARK: - Nav-Bar Button Identifikation
+    enum NavBarButton: Equatable, Hashable {
+        case back
+        case titleURL
+        case goBack
+        case goForward
+        case reload
+        case settings
+    }
+    
+    /// Bestimmt welcher Nav-Bar-Button unter der Cursor-Position liegt (basierend auf gemessenen Frames)
+    private func navBarButton(at cursorPosition: CGPoint) -> NavBarButton? {
+        for (button, frame) in navBarButtonFrames {
+            if frame.contains(cursorPosition) {
+                return button
+            }
+        }
+        return nil
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -49,24 +97,39 @@ struct CursorModeWebView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+            .onPreferenceChange(NavBarButtonFramePreferenceKey.self) { frames in
+                navBarButtonFrames = frames
+            }
             .onAppear {
                 cursorManager.updateScreenSize(geometry.size)
             }
             .onChange(of: geometry.size) { _, newSize in
                 cursorManager.updateScreenSize(newSize)
             }
+            .onChange(of: cursorManager.position) { _, newPosition in
+                // Hover-State für Nav-Bar-Buttons aktualisieren
+                let newHover = navBarButton(at: newPosition)
+                if newHover != hoveredNavBarButton {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        hoveredNavBarButton = newHover
+                    }
+                }
+            }
             .cursorGestureHandler(
                 cursorPosition: $cursorManager.position,
                 screenSize: geometry.size,
                 onTap: {
                     print("🔥 GESTURE TAP erkannt!")
-                    performCursorClick()
+                    performCursorClick(screenSize: geometry.size)
                 },
                 onMenuPress: {
-                    onBack()
+                    handleBackNavigation()
                 },
                 onPlayPause: {
                     onPlayPause()
+                },
+                onScroll: { direction in
+                    performNativeScroll(direction: direction)
                 }
             )
             .overlay(
@@ -74,103 +137,178 @@ struct CursorModeWebView: View {
                     position: $cursorManager.position,
                     screenSize: geometry.size,
                     onTap: {
-                        print("⚠️ CursorOverlay onTap - sollte nicht aufgerufen werden!")
+                        // Nicht verwendet — Tap kommt über cursorGestureHandler
                     }
                 )
             )
         }
         .ignoresSafeArea(.all, edges: .all)
-    }
-    
-    // MARK: - Navigation Bar (Nicht-interaktiv im Cursor-Modus)
-    private var navigationBar: some View {
-        // Hauptcontainer für alle Navigations-Elemente in der oberen Leiste
-        HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-            // Zurück-Button (Links) - NICHT-INTERAKTIV
-            TVOSNavButton(
-                icon: "chevron.left",
-                label: "Zurück",
-                isEnabled: false  // Nicht fokussierbar im Cursor-Modus
-            ) {
-                // Leer - wird nicht aufgerufen
+        // Texteingabe-Alert für Suchfelder und Formulare
+        .alert(textInputPrompt, isPresented: $showTextInputSheet) {
+            TextField("Text eingeben", text: $textInputValue)
+            
+            Button("OK") {
+                submitTextInput()
             }
             
-            // URL/Titel-Anzeige (Mittig, nimmt verfügbaren Platz ein) - NICHT-INTERAKTIV
-            SafariURLBar(
-                urlString: urlString,
-                pageTitle: pageTitle,
-                isCursorMode: true  // Spezielle nicht-interaktive Version
-            )
-            .frame(maxWidth: .infinity)
+            Button("Abbrechen", role: .cancel) {
+                textInputValue = ""
+                pendingInputElementId = nil
+            }
+        } message: {
+            Text("Gib deinen Text ein und drücke OK")
+        }
+    }
+    
+    // MARK: - Hover-Highlight Helper
+    
+    /// Gibt die Hintergrundfarbe für einen Nav-Bar-Button basierend auf Hover-State zurück
+    private func navButtonBackground(for button: NavBarButton) -> Color {
+        if hoveredNavBarButton == button {
+            return Color.white.opacity(0.2)
+        }
+        return Color.clear
+    }
+    
+    /// Gibt die Vordergrundfarbe für einen Nav-Bar-Button basierend auf Hover-State zurück
+    private func navButtonForeground(for button: NavBarButton, defaultColor: Color, disabledColor: Color = .gray.opacity(0.4), isEnabled: Bool = true) -> Color {
+        guard isEnabled else { return disabledColor }
+        if hoveredNavBarButton == button {
+            return .blue
+        }
+        return defaultColor
+    }
+    
+    /// Gibt den Scale-Effekt für einen Nav-Bar-Button basierend auf Hover-State zurück
+    private func navButtonScale(for button: NavBarButton) -> CGFloat {
+        if hoveredNavBarButton == button {
+            return 1.15
+        }
+        return 1.0
+    }
+    
+    // MARK: - Helper: Frame-Messung für einen Nav-Bar-Button
+    private func measureFrame(for button: NavBarButton) -> some View {
+        GeometryReader { geo in
+            Color.clear
+                .preference(
+                    key: NavBarButtonFramePreferenceKey.self,
+                    value: [button: geo.frame(in: .global)]
+                )
+        }
+    }
+    
+    // MARK: - Navigation Bar (Visuell interaktiv im Cursor-Modus)
+    private var navigationBar: some View {
+        HStack(spacing: 16) {
+            // Zurück-Icon
+            Image(systemName: "chevron.left")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundColor(navButtonForeground(for: .back, defaultColor: .gray))
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(navButtonBackground(for: .back))
+                )
+                .scaleEffect(navButtonScale(for: .back))
+                .background(measureFrame(for: .back))
             
-            // Navigations-Buttons (Rechts) - NICHT-INTERAKTIV
+            // URL/Titel-Anzeige
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.gray)
+                Text(pageTitle.isEmpty ? urlString : pageTitle)
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(hoveredNavBarButton == .titleURL ? Color.white.opacity(0.15) : Color.white.opacity(0.1))
+            )
+            .scaleEffect(hoveredNavBarButton == .titleURL ? 1.02 : 1.0)
+            .frame(maxWidth: .infinity)
+            .background(measureFrame(for: .titleURL))
+            
+            // Nav-Icons
             HStack(spacing: 16) {
-                // Browser Zurück-Button
-                TVOSNavIconButton(
-                    icon: "arrow.left",
-                    isEnabled: false  // Nicht fokussierbar
-                ) {
-                    // Leer
-                }
+                // Browser Zurück
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(navButtonForeground(for: .goBack, defaultColor: .white, isEnabled: canGoBack))
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(navButtonBackground(for: .goBack))
+                    )
+                    .scaleEffect(navButtonScale(for: .goBack))
+                    .background(measureFrame(for: .goBack))
                 
-                // Browser Vorwärts-Button
-                TVOSNavIconButton(
-                    icon: "arrow.right",
-                    isEnabled: false  // Nicht fokussierbar
-                ) {
-                    // Leer
-                }
+                // Browser Vorwärts
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(navButtonForeground(for: .goForward, defaultColor: .white, isEnabled: canGoForward))
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(navButtonBackground(for: .goForward))
+                    )
+                    .scaleEffect(navButtonScale(for: .goForward))
+                    .background(measureFrame(for: .goForward))
                 
-                // Reload/Stop Button
-                TVOSNavIconButton(
-                    icon: isLoading ? "xmark" : "arrow.clockwise",
-                    isEnabled: false  // Nicht fokussierbar
-                ) {
-                    // Leer
-                }
+                // Reload / Stop
+                Image(systemName: isLoading ? "xmark" : "arrow.clockwise")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(navButtonForeground(for: .reload, defaultColor: .gray))
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(navButtonBackground(for: .reload))
+                    )
+                    .scaleEffect(navButtonScale(for: .reload))
+                    .background(measureFrame(for: .reload))
                 
-                // Cursor-Modus Badge statt Einstellungen-Button
+                // Cursor-Modus Badge / Settings
                 HStack(spacing: 8) {
                     Image(systemName: "cursorarrow.click.2")
-                        .foregroundColor(.blue)
+                        .foregroundColor(hoveredNavBarButton == .settings ? .white : .blue)
                         .font(.system(size: 20, weight: .semibold))
                     Text("Cursor Modus")
-                        .font(.system(size: TVOSDesign.Typography.caption, weight: .semibold))
-                        .foregroundColor(.blue)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(hoveredNavBarButton == .settings ? .white : .blue)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.blue.opacity(0.15))
+                        .fill(hoveredNavBarButton == .settings ? Color.blue.opacity(0.4) : Color.blue.opacity(0.15))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                                .stroke(hoveredNavBarButton == .settings ? Color.blue.opacity(0.8) : Color.blue.opacity(0.3), lineWidth: hoveredNavBarButton == .settings ? 2 : 1)
                         )
                 )
+                .scaleEffect(navButtonScale(for: .settings))
+                .background(measureFrame(for: .settings))
             }
         }
-        // BREITERES PADDING: Reduziert um schwarze Streifen an den Seiten zu eliminieren
-        .padding(.horizontal, 20) // Reduziert von TVOSDesign.Spacing.safeAreaHorizontal
-        .padding(.vertical, 28)    // Leicht erhöht für mehr Höhe
+        .padding(.horizontal, 20)
+        .padding(.vertical, 28)
         .background(
-            // VOLLBREITER HINTERGRUND: Erstreckt sich über den gesamten Bildschirm
             LinearGradient(
                 gradient: Gradient(colors: [
-                    // Oben: Nahezu opak (sehr dunkelgrau)
                     TVOSDesign.Colors.background.opacity(0.98),
-                    // Mitte: Etwas transparenter
                     TVOSDesign.Colors.background.opacity(0.92),
-                    // Unten: Komplett transparent (sanfter Übergang zur Webseite)
                     TVOSDesign.Colors.background.opacity(0.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
             )
-            // WICHTIG: Ignoriert Safe Areas komplett für vollständige Breite
-            .ignoresSafeArea(.all) // Geändert von .ignoresSafeArea(.all, edges: .top)
+            .ignoresSafeArea(.all)
         )
-        // ZUSÄTZLICHER VOLLBREITER OVERLAY: Eliminiert definitiv schwarze Ränder
         .overlay(
             Rectangle()
                 .fill(
@@ -184,10 +322,10 @@ struct CursorModeWebView: View {
                     )
                 )
                 .ignoresSafeArea(.all)
-                .allowsHitTesting(false) // Verhindert Interaktion mit dem Overlay
+                .allowsHitTesting(false)
         )
-        // WICHTIG: Komplette Navigation Bar nicht-interaktiv machen
         .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 0.15), value: hoveredNavBarButton)
     }
     
     // MARK: - WebView with Cursor
@@ -204,48 +342,311 @@ struct CursorModeWebView: View {
             onNavigationAction: onNavigationAction,
             onContentSizeChanged: { size in
                 contentSize = size
+            },
+            onTextInputRequired: { elementId, placeholder in
+                handleTextInputRequest(elementId: elementId, placeholder: placeholder)
             }
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear)
+        .frame(width: geometry.size.width, height: geometry.size.height - navigationBarHeight)
+        .background(Color.black)
         .clipped()
+        .ignoresSafeArea(.all)
+    }
+    
+    // MARK: - Text Input Handling
+    
+    private func handleTextInputRequest(elementId: String, placeholder: String) {
+        print("⌨️ Texteingabe angefordert für Element: \(elementId)")
+        pendingInputElementId = elementId
+        textInputPrompt = placeholder.isEmpty ? "Text eingeben" : placeholder
+        textInputValue = ""
+        showTextInputSheet = true
+    }
+    
+    private func submitTextInput() {
+        guard let webView = webViewRef else {
+            print("❌ Kein WebView für Texteingabe verfügbar!")
+            return
+        }
+        
+        let escapedValue = textInputValue
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        
+        let script: String
+        if let elementId = pendingInputElementId, !elementId.isEmpty {
+            script = """
+                (function() {
+                    var element = document.getElementById('\(elementId)');
+                    if (!element) {
+                        element = document.querySelector('input[name="\(elementId)"]');
+                    }
+                    if (!element) {
+                        element = document.querySelector('input[type="text"], input[type="search"], textarea');
+                    }
+                    if (element) {
+                        element.value = '\(escapedValue)';
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                        
+                        var form = element.closest('form');
+                        if (form) {
+                            form.submit();
+                        }
+                        return 'success';
+                    }
+                    return 'element_not_found';
+                })();
+            """
+        } else {
+            script = """
+                (function() {
+                    var element = document.querySelector('input[type="text"], input[type="search"], textarea');
+                    if (element) {
+                        element.value = '\(escapedValue)';
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                        
+                        var form = element.closest('form');
+                        if (form) {
+                            form.submit();
+                        }
+                        return 'success';
+                    }
+                    return 'element_not_found';
+                })();
+            """
+        }
+        
+        executeJavaScript(webView, script: script)
+        
+        textInputValue = ""
+        pendingInputElementId = nil
     }
     
     // MARK: - Actions
-    private func performCursorClick() {
+    
+    /// Prüft ob der Cursor im Navigation-Bar-Bereich ist und führt die entsprechende Aktion aus.
+    /// Gibt `true` zurück, wenn ein Nav-Bar-Button getroffen wurde (kein WebView-Klick nötig).
+    private func handleNavBarTap(cursorPosition: CGPoint) -> Bool {
+        guard let button = navBarButton(at: cursorPosition) else {
+            return false
+        }
+        
+        switch button {
+        case .back:
+            print("🔙 Nav-Bar Tap: Zurück-Button")
+            handleBackNavigation()
+        case .titleURL:
+            print("🔗 Nav-Bar Tap: Titel/URL-Bereich (keine Aktion)")
+            // Könnte URL-Eingabe öffnen, für jetzt ignorieren
+        case .goBack:
+            print("⬅️ Nav-Bar Tap: Browser Zurück")
+            if canGoBack {
+                goBack()
+            }
+        case .goForward:
+            print("➡️ Nav-Bar Tap: Browser Vorwärts")
+            if canGoForward {
+                goForward()
+            }
+        case .reload:
+            print("🔄 Nav-Bar Tap: Reload")
+            reload()
+        case .settings:
+            print("⚙️ Nav-Bar Tap: Settings / Modus-Wechsel")
+            onShowSettings()
+        }
+        
+        return true
+    }
+    
+    /// FIX: Cursor-Klick mit korrekter Koordinaten-Umrechnung von Screen → WebView-relativ
+    private func performCursorClick(screenSize: CGSize) {
         print("🎯 performCursorClick aufgerufen!")
-        print("🎯 Cursor Position: \(cursorManager.position)")
+        print("🎯 Cursor Position (Screen): \(cursorManager.position)")
         print("🎯 WebView Ref: \(webViewRef != nil ? "verfügbar" : "NIL!")")
+        
+        // FIX: Sicherstellen, dass wir auf dem Main-Thread sind
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.performCursorClick(screenSize: screenSize)
+            }
+            return
+        }
+        
+        // NEU: Prüfe zuerst, ob der Cursor im Navigation-Bar-Bereich ist
+        if handleNavBarTap(cursorPosition: cursorManager.position) {
+            print("🎯 Nav-Bar-Tap verarbeitet — kein WebView-Klick")
+            return
+        }
         
         guard let webView = webViewRef else {
             print("❌ Kein WebView verfügbar!")
             return
         }
         
+        // FIX: Korrekte Umrechnung von Screen-Koordinaten auf WebView-relative Koordinaten
+        let webViewFrame = webView.frame
+        let webViewScreenFrame = webView.superview?.convert(webViewFrame, to: nil) ?? webViewFrame
+        
+        let webViewRelativeX = cursorManager.position.x - webViewScreenFrame.origin.x
+        let webViewRelativeY = cursorManager.position.y - webViewScreenFrame.origin.y
+        
+        let clampedX = max(0, min(webViewFrame.width, webViewRelativeX))
+        let clampedY = max(0, min(webViewFrame.height, webViewRelativeY))
+        
+        print("🎯 WebView Frame: \(webViewFrame)")
+        print("🎯 WebView Screen Frame: \(webViewScreenFrame)")
+        print("🎯 WebView-relative Position: (\(clampedX), \(clampedY))")
+        
+        print("🎯 Viewport-Koordinaten für elementFromPoint: (\(clampedX), \(clampedY))")
+        
+        // VERBESSERT: Textfeld-Erkennung und Klick mit korrekten Koordinaten
         let script = """
-            console.log('🎯 JavaScript Klick wird ausgeführt');
-            
-            if (typeof window.performCursorClick === 'function') {
-                window.performCursorClick();
-                console.log('✅ window.performCursorClick() erfolgreich aufgerufen');
-            } else {
-                console.log('❌ window.performCursorClick nicht verfügbar');
+            (function() {
+                console.log('🎯 JavaScript Klick wird ausgeführt bei', \(clampedX), \(clampedY));
                 
-                var element = document.elementFromPoint(window.cursorX, window.cursorY);
-                if (element) {
-                    console.log('🎯 Fallback - Element gefunden:', element.tagName);
-                    element.click();
-                } else {
-                    console.log('❌ Fallback - Kein Element gefunden');
+                var element = document.elementFromPoint(\(clampedX), \(clampedY));
+                if (!element) {
+                    console.log('❌ Kein Element an Position gefunden');
+                    return JSON.stringify({ type: 'none', id: '', placeholder: '' });
                 }
-            }
+                
+                console.log('🎯 Element gefunden:', element.tagName, element.type, element.className);
+                
+                // Prüfe ob es ein Textfeld ist
+                var isTextField = (
+                    element.tagName === 'INPUT' && 
+                    ['text', 'search', 'email', 'url', 'tel', 'password'].includes(element.type)
+                ) || element.tagName === 'TEXTAREA' || element.isContentEditable;
+                
+                if (isTextField) {
+                    console.log('⌨️ Textfeld erkannt!');
+                    return JSON.stringify({
+                        type: 'textfield',
+                        id: element.id || element.name || '',
+                        placeholder: element.placeholder || element.getAttribute('aria-label') || 'Text eingeben'
+                    });
+                }
+                
+                // Normaler Klick mit vollständiger Event-Simulation
+                var mouseDown = new MouseEvent('mousedown', {
+                    bubbles: true, cancelable: true,
+                    clientX: \(clampedX), clientY: \(clampedY)
+                });
+                var mouseUp = new MouseEvent('mouseup', {
+                    bubbles: true, cancelable: true,
+                    clientX: \(clampedX), clientY: \(clampedY)
+                });
+                var click = new MouseEvent('click', {
+                    bubbles: true, cancelable: true,
+                    clientX: \(clampedX), clientY: \(clampedY)
+                });
+                
+                element.dispatchEvent(mouseDown);
+                element.dispatchEvent(mouseUp);
+                element.dispatchEvent(click);
+                
+                // Falls Link: Explizit navigieren
+                var linkElement = element.closest('a[href]');
+                if (linkElement && linkElement.href) {
+                    console.log('🔗 Link-Klick:', linkElement.href);
+                    window.location.href = linkElement.href;
+                }
+                
+                return JSON.stringify({ type: 'click', tag: element.tagName, id: element.id || '' });
+            })();
         """
         
-        executeJavaScript(webView, script: script)
+        let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+        if webView.responds(to: jsSelector) {
+            if let result = webView.perform(jsSelector, with: script)?.takeUnretainedValue() as? String {
+                print("🔧 JavaScript Ergebnis: \(result)")
+                
+                // Parse JSON-Ergebnis für Textfeld-Erkennung
+                if let data = result.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+                   let type = json["type"], type == "textfield" {
+                    let elementId = json["id"] ?? ""
+                    let placeholder = json["placeholder"] ?? "Text eingeben"
+                    
+                    DispatchQueue.main.async {
+                        self.handleTextInputRequest(elementId: elementId, placeholder: placeholder)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Back Navigation
+    private func handleBackNavigation() {
+        print("🔙 Back-Navigation aufgerufen")
+        
+        guard let webView = webViewRef else {
+            print("❌ Kein WebView für Back-Navigation verfügbar!")
+            onBack()
+            return
+        }
+        
+        if canGoBack {
+            print("🔙 WebView kann zurücknavigieren - führe Browser-Back aus")
+            let selector = NSSelectorFromString("goBack")
+            if webView.responds(to: selector) {
+                webView.perform(selector)
+                print("✅ Browser goBack() erfolgreich ausgeführt")
+            } else {
+                onBack()
+            }
+        } else {
+            print("🔙 WebView kann nicht zurücknavigieren - führe App-Back aus")
+            onBack()
+        }
+    }
+    
+    // MARK: - Native Scrolling (FIX: Verwendet UIScrollView.contentOffset statt JavaScript)
+    
+    private func performNativeScroll(direction: ScrollDirection) {
+        guard let webView = webViewRef else {
+            return
+        }
+        
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.performNativeScroll(direction: direction)
+            }
+            return
+        }
+        
+        guard let scrollView = webView.value(forKey: "scrollView") as? UIScrollView else {
+            return
+        }
+        
+        let viewportHeight = scrollView.bounds.height
+        let contentHeight = scrollView.contentSize.height
+        let currentOffset = scrollView.contentOffset.y
+        
+        let scrollAmount = viewportHeight * 0.30
+        let delta = direction == .up ? -scrollAmount : scrollAmount
+        
+        let maxOffset = max(0, contentHeight - viewportHeight)
+        let targetOffset = min(max(0, currentOffset + delta), maxOffset)
+        
+        UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+            scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: targetOffset)
+        }
     }
     
     private func executeJavaScript(_ webView: UIView, script: String) {
-        print("🔧 JavaScript wird ausgeführt...")
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.executeJavaScript(webView, script: script)
+            }
+            return
+        }
+        
         let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
         if webView.responds(to: jsSelector) {
             let result = webView.perform(jsSelector, with: script)
@@ -300,16 +701,23 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     let preferences: BrowserPreferences
     let onNavigationAction: (URLRequest) -> Bool
     let onContentSizeChanged: (CGSize) -> Void
+    let onTextInputRequired: (String, String) -> Void
     
     typealias UIViewType = UIView
     
+    // Computed Property für Mobile-Modus basierend auf User-Agent
+    private var useMobileMode: Bool {
+        let userAgent = preferences.userAgent.lowercased()
+        return userAgent.contains("mobile") || userAgent.contains("iphone") || userAgent.contains("ipad")
+    }
+    
     // MARK: - Viewport & Zoom JavaScript
-    /// Dieses Script passt die Seite an die Bildschirmbreite an
-    /// und vergrößert dann den Text für bessere Lesbarkeit auf TV
     private var viewportAndZoomJavaScript: String {
         """
         (function() {
-            // 1. Viewport Meta-Tag setzen/ersetzen für korrekte Breitenanpassung
+            console.log('🔧 Viewport und Zoom JavaScript wird ausgeführt...');
+            
+            // Viewport Meta-Tag setzen für korrekte Breitenanpassung
             var viewport = document.querySelector('meta[name="viewport"]');
             if (viewport) {
                 viewport.remove();
@@ -317,10 +725,10 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             
             viewport = document.createElement('meta');
             viewport.name = 'viewport';
-            viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes';
+            viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes';
             document.head.insertBefore(viewport, document.head.firstChild);
             
-            // 2. CSS für korrekte Anpassung und größeren Text
+            // Style für TV-Lesbarkeit — OHNE Hintergrundfarbe zu erzwingen
             var style = document.getElementById('tvBrowserStyle');
             if (!style) {
                 style = document.createElement('style');
@@ -329,51 +737,46 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             }
             
             style.textContent = `
-                /* Verhindere horizontales Overflow und setze transparenten Hintergrund */
-                html, body {
-                    max-width: 100vw !important;
-                    overflow-x: hidden !important;
-                    background-color: transparent !important;
+                /* Grundlegende Textvergrößerung für TV-Lesbarkeit */
+                html {
+                    font-size: 125% !important;
                     margin: 0 !important;
                     padding: 0 !important;
+                    overflow-x: hidden !important;
                 }
                 
-                /* Bilder und Videos responsive machen */
+                body {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    overflow-x: hidden !important;
+                    font-size: 1.1em !important;
+                    line-height: 1.5 !important;
+                }
+                
+                /* Responsive Medien */
                 img, video, iframe, embed, object {
                     max-width: 100% !important;
                     height: auto !important;
                 }
                 
-                /* Tabellen responsive */
                 table {
                     max-width: 100% !important;
-                    display: block !important;
                     overflow-x: auto !important;
                 }
                 
-                /* Pre/Code Blöcke umbrechen */
                 pre, code {
                     white-space: pre-wrap !important;
                     word-wrap: break-word !important;
                     max-width: 100% !important;
                 }
                 
-                /* Fixe Breiten überschreiben */
+                /* Verhindere horizontales Scrollen */
                 * {
                     max-width: 100vw !important;
+                    box-sizing: border-box !important;
                 }
                 
                 /* TEXT VERGRÖSSERUNG für TV */
-                html {
-                    font-size: 125% !important;
-                }
-                
-                body {
-                    font-size: 1.1em !important;
-                    line-height: 1.5 !important;
-                }
-                
-                /* Überschriften größer */
                 h1 { font-size: 2em !important; }
                 h2 { font-size: 1.75em !important; }
                 h3 { font-size: 1.5em !important; }
@@ -382,6 +785,7 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
                 /* Links besser sichtbar */
                 a {
                     text-decoration: underline !important;
+                    color: #1976d2 !important;
                 }
                 
                 /* Buttons größer für TV */
@@ -392,23 +796,26 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
                 }
             `;
             
-            // 3. Alle fixierten Breiten-Attribute entfernen
-            var allElements = document.querySelectorAll('[width]');
-            allElements.forEach(function(el) {
-                if (el.tagName !== 'IMG' && el.tagName !== 'VIDEO') {
-                    el.removeAttribute('width');
-                }
-            });
-            
-            // 4. Inline-Styles mit fixen Breiten korrigieren
-            var elementsWithStyle = document.querySelectorAll('[style*="width"]');
-            elementsWithStyle.forEach(function(el) {
-                var style = el.getAttribute('style');
-                if (style && style.includes('width:') && style.includes('px')) {
-                    // Nur wenn es eine fixe Pixelbreite ist
-                    el.style.maxWidth = '100%';
-                }
-            });
+            // Fixe Breiten-Attribute entfernen
+            setTimeout(function() {
+                var allElements = document.querySelectorAll('[width]');
+                allElements.forEach(function(el) {
+                    if (el.tagName !== 'IMG' && el.tagName !== 'VIDEO') {
+                        el.removeAttribute('width');
+                    }
+                });
+                
+                var elementsWithStyle = document.querySelectorAll('[style*="width"]');
+                elementsWithStyle.forEach(function(el) {
+                    var s = el.getAttribute('style');
+                    if (s && s.includes('width:') && s.includes('px')) {
+                        el.style.maxWidth = '100%';
+                        el.style.width = 'auto';
+                    }
+                });
+                
+                console.log('✅ Layout-Anpassungen abgeschlossen');
+            }, 100);
             
             console.log('📐 Viewport und Zoom für TV angepasst');
             return 'viewport_set';
@@ -416,64 +823,199 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
         """
     }
     
+    private static var mouseEventJavaScript: String {
+        """
+        (function() {
+            console.log('🖱️ Mouse Event JavaScript wird initialisiert (Click-Only-Modus)...');
+            
+            window.cursorX = 0;
+            window.cursorY = 0;
+            
+            window.updateCursorPosition = function(x, y) {
+                window.cursorX = x;
+                window.cursorY = y;
+            };
+            
+            window.performCursorClick = function() {
+                console.log('🎯 performCursorClick bei:', window.cursorX, window.cursorY);
+                
+                var element = document.elementFromPoint(window.cursorX, window.cursorY);
+                if (element) {
+                    console.log('🎯 Element gefunden:', element.tagName, element.className);
+                    
+                    var mouseDown = new MouseEvent('mousedown', {
+                        bubbles: true, cancelable: true,
+                        clientX: window.cursorX, clientY: window.cursorY
+                    });
+                    var mouseUp = new MouseEvent('mouseup', {
+                        bubbles: true, cancelable: true,
+                        clientX: window.cursorX, clientY: window.cursorY
+                    });
+                    var click = new MouseEvent('click', {
+                        bubbles: true, cancelable: true,
+                        clientX: window.cursorX, clientY: window.cursorY
+                    });
+                    
+                    element.dispatchEvent(mouseDown);
+                    element.dispatchEvent(mouseUp);
+                    element.dispatchEvent(click);
+                    
+                    var linkElement = element.closest('a[href]');
+                    if (linkElement && linkElement.href) {
+                        console.log('🔗 Link-Klick:', linkElement.href);
+                        window.location.href = linkElement.href;
+                    }
+                    
+                    return true;
+                }
+                return false;
+            };
+            
+            console.log('✅ Mouse Event JavaScript initialisiert (Click-Only)');
+            return 'mouse_events_initialized';
+        })();
+        """
+    }
+    
+    private static var cursorStyleJavaScript: String {
+        """
+        (function() {
+            console.log('🎨 Cursor Style JavaScript wird initialisiert (vereinfacht)...');
+            
+            var style = document.getElementById('cursorHoverStyle');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'cursorHoverStyle';
+                document.head.appendChild(style);
+            }
+            
+            style.textContent = `
+                a:active, button:active {
+                    outline: 3px solid #007AFF !important;
+                    outline-offset: 2px !important;
+                    background-color: rgba(0, 122, 255, 0.1) !important;
+                    transition: all 0.1s ease !important;
+                }
+            `;
+            
+            console.log('✅ Cursor Style JavaScript initialisiert (vereinfacht)');
+            return 'cursor_style_initialized';
+        })();
+        """
+    }
+    
     func makeUIView(context: Context) -> UIView {
+        guard Thread.isMainThread else {
+            fatalError("❌ makeUIView muss auf dem Main-Thread aufgerufen werden!")
+        }
+        
         print("🔧 WebView wird erstellt...")
+        
+        let userAgent: String
+        if useMobileMode {
+            userAgent = "Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Mobile/15E148 Safari/604.1"
+        } else {
+            userAgent = preferences.userAgent.isEmpty
+                ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Safari/605.1.15"
+                : preferences.userAgent
+        }
+        
+        let dictionary = ["UserAgent": userAgent]
+        UserDefaults.standard.register(defaults: dictionary)
+        UserDefaults.standard.synchronize()
         
         guard let webViewClass = NSClassFromString("UIWebView") as? UIView.Type else {
             print("❌ UIWebView Klasse nicht gefunden!")
-            let fallbackView = UIView()
-            fallbackView.backgroundColor = .clear
-            return fallbackView
+            return createFallbackView()
         }
         
         let webView = webViewClass.init()
         
-        webView.backgroundColor = .clear
-        webView.isOpaque = false
+        let containerView = UIView()
+        containerView.backgroundColor = .black
+        containerView.clipsToBounds = true
+        containerView.addSubview(webView)
         
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.clipsToBounds = false
         webView.setValue(context.coordinator, forKey: "delegate")
+        webView.layoutMargins = .zero
+        webView.backgroundColor = .white
+        webView.isOpaque = true
+        webView.isUserInteractionEnabled = true
         
         if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
-            scrollView.isScrollEnabled = true
-            scrollView.bounces = true
-            scrollView.backgroundColor = .clear
-            scrollView.isOpaque = false
-            // Horizontales Scrollen deaktivieren
-            scrollView.showsHorizontalScrollIndicator = false
-            
-            // WICHTIG: Content Insets auf null setzen um schwarze Ränder zu vermeiden
-            scrollView.contentInset = .zero
-            scrollView.scrollIndicatorInsets = .zero
+            scrollView.layoutMargins = .zero
             if #available(tvOS 11.0, *) {
                 scrollView.contentInsetAdjustmentBehavior = .never
             }
+            scrollView.contentOffset = .zero
+            scrollView.contentInset = .zero
+            scrollView.clipsToBounds = false
+            scrollView.bounces = true
+            scrollView.isScrollEnabled = true
+            scrollView.panGestureRecognizer.allowedTouchTypes = [
+                NSNumber(value: UITouch.TouchType.indirect.rawValue)
+            ]
+            scrollView.backgroundColor = .white
+            scrollView.indicatorStyle = .default
+            scrollView.showsVerticalScrollIndicator = true
         }
         
-        // WICHTIG: scalesPageToFit aktivieren für automatische Anpassung
-        webView.setValue(true, forKey: "scalesPageToFit")
-        webView.setValue(true, forKey: "allowsInlineMediaPlayback")
-        webView.setValue(false, forKey: "mediaPlaybackRequiresUserAction")
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            webView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+        ])
         
-        configureWebView(webView, with: preferences)
+        context.coordinator.webView = webView
+        context.coordinator.containerView = containerView
         
         DispatchQueue.main.async {
             self.webViewRef = webView
-            print("🔧 WebView Referenz gespeichert")
         }
         
-        return webView
+        return containerView
     }
     
-    func updateUIView(_ webView: UIView, context: Context) {
+    private func createFallbackView() -> UIView {
+        let fallbackContainer = UIView()
+        fallbackContainer.backgroundColor = UIColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
+        
+        let label = UILabel()
+        label.text = "⚠️ UIWebView nicht verfügbar\n\nDiese tvOS Version unterstützt möglicherweise keine WebView-Darstellung."
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.font = UIFont.systemFont(ofSize: 32, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        
+        fallbackContainer.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: fallbackContainer.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: fallbackContainer.centerYAnchor),
+            label.leadingAnchor.constraint(greaterThanOrEqualTo: fallbackContainer.leadingAnchor, constant: 40),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: fallbackContainer.trailingAnchor, constant: -40)
+        ])
+        
+        return fallbackContainer
+    }
+    
+    func updateUIView(_ containerView: UIView, context: Context) {
         context.coordinator.parent = self
         
-        webView.backgroundColor = .clear
-        webView.isOpaque = false
+        guard let webView = context.coordinator.webView else { return }
         
-        // Layer-Hintergrund explizit transparent setzen
-        if let layer = webView.value(forKey: "layer") as? CALayer {
-            layer.backgroundColor = UIColor.clear.cgColor
+        containerView.backgroundColor = .black
+        
+        if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
+            scrollView.contentInset = .zero
+            scrollView.scrollIndicatorInsets = .zero
+            scrollView.frame = containerView.bounds
         }
+        
+        webView.frame = containerView.bounds
         
         if let url = url, context.coordinator.lastLoadedURL != url {
             context.coordinator.lastLoadedURL = url
@@ -485,7 +1027,6 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             }
         }
         
-        debouncedCursorUpdate(webView, position: cursorPosition, context: context)
         updateNavigationStateIfNeeded(webView, context: context)
     }
     
@@ -495,70 +1036,32 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     
     // MARK: - Helper Methods
     
-    private func updateCursorPositionInJS(_ webView: UIView, position: CGPoint) {
-        let script = """
-            if (typeof window.updateCursorPosition === 'function') {
-                window.updateCursorPosition(\(position.x), \(position.y));
-            }
-        """
-        executeJavaScript(webView, script: script)
-    }
-    
-    private func debouncedCursorUpdate(_ webView: UIView, position: CGPoint, context: Context) {
-        let coordinator = context.coordinator
-        coordinator.pendingCursorPosition = position
-        
-        coordinator.cursorUpdateTimer?.invalidate()
-        
-        coordinator.cursorUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { _ in
-            if let pendingPos = coordinator.pendingCursorPosition {
-                let webViewFrame = webView.frame
-                let webViewScreenFrame = webView.superview?.convert(webViewFrame, to: nil) ?? webViewFrame
-                
-                let webViewRelativeX = pendingPos.x - webViewScreenFrame.origin.x
-                let webViewRelativeY = pendingPos.y - webViewScreenFrame.origin.y
-                
-                let clampedX = max(0, min(webViewFrame.width, webViewRelativeX))
-                let clampedY = max(0, min(webViewFrame.height, webViewRelativeY))
-                
-                let finalPosition = CGPoint(x: clampedX, y: clampedY)
-                
-                self.updateCursorPositionInJS(webView, position: finalPosition)
-                coordinator.pendingCursorPosition = nil
-            }
-        }
-    }
-    
     private func updateNavigationStateIfNeeded(_ webView: UIView, context: Context) {
         let coordinator = context.coordinator
-        
         guard !coordinator.isUpdatingNavigationState else { return }
-        
         coordinator.isUpdatingNavigationState = true
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-            if let back = webView.value(forKey: "canGoBack") as? Bool, back != self.canGoBack {
-                self.canGoBack = back
-            }
-            if let forward = webView.value(forKey: "canGoForward") as? Bool, forward != self.canGoForward {
-                self.canGoForward = forward
-            }
-            coordinator.isUpdatingNavigationState = false
+        if let back = webView.value(forKey: "canGoBack") as? Bool, back != self.canGoBack {
+            DispatchQueue.main.async { self.canGoBack = back }
         }
+        if let forward = webView.value(forKey: "canGoForward") as? Bool, forward != self.canGoForward {
+            DispatchQueue.main.async { self.canGoForward = forward }
+        }
+        
+        coordinator.isUpdatingNavigationState = false
     }
     
     func executeJavaScript(_ webView: UIView, script: String) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.executeJavaScript(webView, script: script)
+            }
+            return
+        }
+        
         let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
         if webView.responds(to: jsSelector) {
             _ = webView.perform(jsSelector, with: script)
-        }
-    }
-    
-    private func configureWebView(_ webView: UIView, with preferences: BrowserPreferences) {
-        if !preferences.userAgent.isEmpty {
-            if webView.responds(to: NSSelectorFromString("setCustomUserAgent:")) {
-                webView.setValue(preferences.userAgent, forKey: "customUserAgent")
-            }
         }
     }
     
@@ -566,17 +1069,18 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     class Coordinator: NSObject {
         var parent: CursorWebViewIntegrated
         var lastLoadedURL: URL?
-        var cursorUpdateTimer: Timer?
-        var pendingCursorPosition: CGPoint?
         var isUpdatingNavigationState: Bool = false
         var hasInjectedJavaScript: Bool = false
+        var containerView: UIView?
+        var webView: UIView?
+        var lastCursorPosition: CGPoint = .zero
         
         init(_ parent: CursorWebViewIntegrated) {
             self.parent = parent
         }
         
         deinit {
-            cursorUpdateTimer?.invalidate()
+            print("🧹 Coordinator deinit - Cleanup durchgeführt")
         }
         
         @objc func webViewDidStartLoad(_ webView: UIView) {
@@ -604,51 +1108,58 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
                    self.parent.url != url {
                     self.parent.url = url
                 }
+                
+                if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
+                    scrollView.contentInset = .zero
+                    scrollView.scrollIndicatorInsets = .zero
+                    
+                    let contentSize = scrollView.contentSize
+                    print("📐 ScrollView Content Size: \(contentSize), Offset: \(scrollView.contentOffset)")
+                    self.parent.onContentSizeChanged(contentSize)
+                }
             }
             
-            // JavaScript injizieren
-            injectJavaScriptIfNeeded(webView)
-            
-            // Viewport und Zoom anpassen
-            applyViewportAndZoom(webView)
-            
-            // Report content size
-            reportContentSizeIfNeeded(webView)
+            DispatchQueue.main.async {
+                self.injectJavaScriptIfNeeded(webView)
+                self.applyViewportAndZoom(webView)
+            }
         }
         
         private func injectJavaScriptIfNeeded(_ webView: UIView) {
-            print("💉 JavaScript wird injiziert...")
-            
-            let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
-            guard webView.responds(to: jsSelector) else {
-                print("❌ WebView unterstützt kein JavaScript!")
+            guard Thread.isMainThread else {
+                DispatchQueue.main.async { self.injectJavaScriptIfNeeded(webView) }
                 return
             }
             
-            parent.executeJavaScript(webView, script: CursorWebView.mouseEventJavaScript)
-            parent.executeJavaScript(webView, script: CursorWebView.cursorStyleJavaScript)
+            print("💉 JavaScript wird injiziert...")
+            
+            let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+            guard webView.responds(to: jsSelector) else { return }
+            
+            parent.executeJavaScript(webView, script: CursorWebViewIntegrated.mouseEventJavaScript)
+            parent.executeJavaScript(webView, script: CursorWebViewIntegrated.cursorStyleJavaScript)
             
             hasInjectedJavaScript = true
         }
         
         private func applyViewportAndZoom(_ webView: UIView) {
-            // Viewport und Zoom nach kurzer Verzögerung anwenden
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self.parent.executeJavaScript(webView, script: self.parent.viewportAndZoomJavaScript)
-                print("📐 Viewport und Zoom angewendet")
+            guard Thread.isMainThread else {
+                DispatchQueue.main.async { self.applyViewportAndZoom(webView) }
+                return
             }
-        }
-        
-        private func reportContentSizeIfNeeded(_ webView: UIView) {
-            let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
-            guard webView.responds(to: jsSelector) else { return }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                if let heightString = webView.perform(jsSelector, with: "document.body.scrollHeight")?.takeUnretainedValue() as? String,
-                   let height = Double(heightString) {
-                    let size = CGSize(width: webView.frame.width, height: CGFloat(height))
-                    DispatchQueue.main.async {
-                        self.parent.onContentSizeChanged(size)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                guard Thread.isMainThread else { return }
+                self.parent.executeJavaScript(webView, script: self.parent.viewportAndZoomJavaScript)
+                print("📐 Viewport angepasst")
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
+                        let contentSize = scrollView.contentSize
+                        print("📐 ScrollView Content Size (nach Layout): \(contentSize)")
+                        DispatchQueue.main.async {
+                            self.parent.onContentSizeChanged(contentSize)
+                        }
                     }
                 }
             }
@@ -667,17 +1178,23 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
     }
 }
 
-// MARK: - Preview
-#Preview {
-    @Previewable @State var url: URL? = URL(string: "https://www.apple.com")
+// MARK: - Preview Helper View
+private struct CursorModeWebViewPreview: View {
+    @State private var url: URL? = URL(string: "https://www.apple.com")
     
-    return CursorModeWebView(
-        url: $url,
-        preferences: BrowserPreferences(),
-        onNavigationAction: { _ in true },
-        onBack: { },
-        onPlayPause: { },
-        onShowSettings: { }
-    )
-    .preferredColorScheme(.dark)
+    var body: some View {
+        CursorModeWebView(
+            url: $url,
+            preferences: BrowserPreferences(),
+            onNavigationAction: { _ in true },
+            onBack: { },
+            onPlayPause: { },
+            onShowSettings: { }
+        )
+        .preferredColorScheme(.dark)
+    }
 }
+#Preview {
+    CursorModeWebViewPreview()
+}
+

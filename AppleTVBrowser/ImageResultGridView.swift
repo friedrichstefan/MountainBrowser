@@ -17,9 +17,9 @@ struct ImageResultGridView: View {
     ]
     
     var body: some View {
-        ScrollView {
+        // tvOS: Kein GeometryReader – ScrollView bekommt Größe von Parent
+        ScrollView(.vertical, showsIndicators: false) {
             if results.isEmpty {
-                // Empty State für keine Bilder-Ergebnisse
                 ImageEmptyStateView()
                     .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
                     .padding(.top, 100)
@@ -32,9 +32,10 @@ struct ImageResultGridView: View {
                     }
                 }
                 .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
-                .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom)
+                .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom + 100)
             }
         }
+        .accessibilityLabel("Bildsuchergebnisse")
     }
 }
 
@@ -75,7 +76,6 @@ struct ImageEmptyStateView: View {
 }
 
 // MARK: - Image Result Card
-
 struct ImageResultCard: View {
     let result: SearchResult
     let onTap: () -> Void
@@ -91,7 +91,8 @@ struct ImageResultCard: View {
                 isPressed = true
             }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                     isPressed = false
                 }
@@ -108,7 +109,6 @@ struct ImageResultCard: View {
                         .overlay(
                             Group {
                                 if !imageLoaded && !imageError {
-                                    // Loading State
                                     VStack(spacing: 12) {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.secondaryLabel))
@@ -119,7 +119,6 @@ struct ImageResultCard: View {
                                             .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                                     }
                                 } else if imageError {
-                                    // Error State
                                     VStack(spacing: 12) {
                                         Image(systemName: "photo.fill")
                                             .font(.system(size: 40))
@@ -135,32 +134,40 @@ struct ImageResultCard: View {
                             }
                         )
                     
-                    // Tatsächliches Bild
                     if let thumbnailURL = result.thumbnailURL, !imageError {
-                        AsyncImage(url: URL(string: thumbnailURL)) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .onAppear {
-                                    withAnimation(.easeIn(duration: 0.3)) {
-                                        imageLoaded = true
+                        AsyncImage(url: URL(string: thumbnailURL)) { phase in
+                            switch phase {
+                            case .empty:
+                                Color.clear
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    .onAppear {
+                                        withAnimation(.easeIn(duration: 0.3)) {
+                                            imageLoaded = true
+                                        }
                                     }
-                                }
-                        } placeholder: {
-                            Color.clear
+                            case .failure:
+                                Color.clear
+                                    .onAppear {
+                                        imageError = true
+                                    }
+                            @unknown default:
+                                Color.clear
+                            }
                         }
                         .onAppear {
-                            // Timeout für Bild-Laden
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-                                if !imageLoaded {
+                            Task {
+                                try? await Task.sleep(for: .seconds(10))
+                                if !imageLoaded && !imageError {
                                     imageError = true
                                 }
                             }
                         }
                     }
                     
-                    // Dimensions Badge (unten rechts)
                     if let width = result.imageWidth, let height = result.imageHeight {
                         VStack {
                             Spacer()
@@ -181,35 +188,28 @@ struct ImageResultCard: View {
                     }
                 }
                 .overlay(
-                    // Focus Ring
                     RoundedRectangle(cornerRadius: 16)
                         .stroke(isFocused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 3)
                 )
                 
-                // Titel (gekürzt)
                 Text(result.title)
                     .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
                     .foregroundColor(isFocused ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.secondaryLabel)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 
-                // Domain
                 Text(result.displayURL)
                     .font(.system(size: TVOSDesign.Typography.caption))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                     .lineLimit(1)
             }
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.card) // tvOS native Card-Style für automatisches Focus-Scrolling
         .focused($isFocused)
-        .scaleEffect(isPressed ? 0.95 : (isFocused ? 1.05 : 1.0))
-        .shadow(
-            color: isFocused ? Color.black.opacity(0.4) : Color.black.opacity(0.1),
-            radius: isFocused ? 20 : 8,
-            y: isFocused ? 10 : 4
-        )
+        .scaleEffect(isPressed ? 0.95 : 1.0)
         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: isFocused)
         .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
+        .accessibilityLabel(result.title)
     }
 }
 
@@ -258,3 +258,4 @@ struct ImageResultCard: View {
         )
     }
 }
+

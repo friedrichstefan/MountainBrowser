@@ -50,7 +50,6 @@ struct AppleTVBrowserApp: App {
     
     /// Konfiguriert die globale Erscheinung für alle UIKit-Elemente
     private func configureGlobalAppearance() {
-        // Alle UIKit-Elemente auf Weiß setzen
         UIView.appearance().tintColor = .white
         UITextField.appearance().tintColor = .white
         UITextView.appearance().tintColor = .white
@@ -59,7 +58,6 @@ struct AppleTVBrowserApp: App {
         UITabBar.appearance().tintColor = .white
         UISearchBar.appearance().tintColor = .white
         
-        // Für alle Windows
         DispatchQueue.main.async {
             UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }

@@ -23,10 +23,12 @@ struct SearchResultGridView: View {
     ]
     
     var body: some View {
+        // Auf tvOS: ScrollView scrollt automatisch wenn der Fokus
+        // zu einem Element außerhalb des sichtbaren Bereichs wechselt.
+        // KEIN GeometryReader verwenden – das kann Größe=0 verursachen.
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 resultsHeader
-                    .zIndex(2000)
                     .padding(.bottom, 60)
                 
                 LazyVGrid(columns: columns, spacing: TVOSDesign.Spacing.gridVerticalSpacing) {
@@ -38,7 +40,6 @@ struct SearchResultGridView: View {
                                 set: { newValue in
                                     if newValue {
                                         focusedIndex = index
-                                        // Wenn ein Element nach dem ersten fokussiert wird, InfoBox minimieren
                                         if index > 0 && !hasScrolled {
                                             hasScrolled = true
                                             onScrollStarted?()
@@ -52,16 +53,18 @@ struct SearchResultGridView: View {
                             onSelect(result)
                         }
                         .zIndex(focusedIndex == index ? 1000 : 0)
+                        .accessibilityLabel("\(result.title). \(result.description)")
+                        .accessibilityHint("Doppeltippen zum Öffnen")
                     }
                 }
                 .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
-                .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom)
+                .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom + 100) // Extra Platz am Ende für letzte Reihe
             }
             .padding(.top, TVOSDesign.Spacing.elementSpacing)
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ResetScrollState"))) { _ in
-            hasScrolled = false
-        }
+        // WICHTIG für tvOS: Fokus-basiertes Scrolling braucht keine explizite Größe.
+        // Die ScrollView muss nur genug Platz von der Parent-View bekommen.
+        .accessibilityLabel("Suchergebnisse")
     }
     
     func resetScrollState() {
@@ -84,6 +87,7 @@ struct SearchResultGridView: View {
             Spacer()
         }
         .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
+        .accessibilityLabel("\(results.count) Suchergebnisse gefunden")
     }
 }
 
@@ -102,7 +106,8 @@ struct TVOSSearchCard: View {
             withAnimation(TVOSDesign.Animation.pressSpring) {
                 isPressed = true
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
                 withAnimation(TVOSDesign.Animation.pressSpring) {
                     isPressed = false
                 }
@@ -111,13 +116,12 @@ struct TVOSSearchCard: View {
         }) {
             cardContent
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.card) // tvOS Card Button Style – gibt automatisch Focus-Lift-Effekt
         .focused($isFocused)
         .onChange(of: isFocused) { _, newValue in
             isFocusedBinding = newValue
         }
-        .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : (isFocused ? TVOSDesign.Focus.scale : 1.0))
-        .offset(y: isFocused ? -TVOSDesign.Focus.cardLiftOffset : 0)
+        .scaleEffect(isPressed ? TVOSDesign.Focus.pressScale : 1.0)
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
         .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
     }
@@ -131,11 +135,6 @@ struct TVOSSearchCard: View {
         .background(
             RoundedRectangle(cornerRadius: TVOSDesign.Focus.cornerRadius)
                 .fill(isFocused ? TVOSDesign.Colors.focusedCardBackground : TVOSDesign.Colors.cardBackground)
-        )
-        .shadow(
-            color: Color.black.opacity(isFocused ? 0.5 : 0.2),
-            radius: isFocused ? TVOSDesign.Focus.shadowRadius : 8,
-            y: isFocused ? 12 : 4
         )
     }
     

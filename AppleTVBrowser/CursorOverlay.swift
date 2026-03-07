@@ -100,6 +100,9 @@ final class CursorPositionManager {
     var position: CGPoint = CGPoint(x: 960, y: 540) // Center of 1920x1080
     var screenSize: CGSize = CGSize(width: 1920, height: 1080)
     
+    // Scroll-Edge-Bereiche (in Pixeln vom Rand) - angepasst für Navigation Bar
+    private let scrollEdgeThreshold: CGFloat = 120
+    
     func updateScreenSize(_ size: CGSize) {
         screenSize = size
         // Keep cursor centered if this is first time setting screen size
@@ -118,6 +121,37 @@ final class CursorPositionManager {
             x: max(margin, min(screenSize.width - margin, position.x)),
             y: max(margin, min(screenSize.height - margin, position.y))
         )
+    }
+    
+    // MARK: - Scroll Edge Detection
+    func isInTopScrollEdge() -> Bool {
+        return position.y <= scrollEdgeThreshold
+    }
+    
+    func isInBottomScrollEdge() -> Bool {
+        return position.y >= (screenSize.height - scrollEdgeThreshold)
+    }
+    
+    func getScrollDirection() -> ScrollDirection? {
+        if isInTopScrollEdge() {
+            return .up
+        } else if isInBottomScrollEdge() {
+            return .down
+        }
+        return nil
+    }
+}
+
+// MARK: - Scroll Direction Enum
+enum ScrollDirection {
+    case up
+    case down
+    
+    var description: String {
+        switch self {
+        case .up: return "Nach oben"
+        case .down: return "Nach unten"
+        }
     }
 }
 

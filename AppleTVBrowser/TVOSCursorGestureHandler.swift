@@ -14,6 +14,7 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
     let onTap: () -> Void
     let onMenuPress: () -> Void
     let onPlayPause: () -> Void
+    let onScroll: ((ScrollDirection) -> Void)?
     
     func makeUIView(context: Context) -> CursorGestureView {
         let view = CursorGestureView()
@@ -28,6 +29,7 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
         context.coordinator.onTap = onTap
         context.coordinator.onMenuPress = onMenuPress
         context.coordinator.onPlayPause = onPlayPause
+        context.coordinator.onScroll = onScroll
     }
     
     func makeCoordinator() -> Coordinator {
@@ -46,11 +48,33 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
         var onTap: () -> Void
         var onMenuPress: () -> Void
         var onPlayPause: () -> Void
+        var onScroll: ((ScrollDirection) -> Void)?
         
-        // Cursor movement settings
-        private let sensitivity: CGFloat = 3.0
-        private let acceleration: CGFloat = 1.5
-        private let deadZone: CGFloat = 0.1
+        // Cursor-Geschwindigkeit
+        private let sensitivity: CGFloat = 1.2
+        private let acceleration: CGFloat = 1.2
+        private let deadZone: CGFloat = 0.3
+        
+        // Scroll settings
+        private let scrollEdgeThreshold: CGFloat = 100
+        private let navigationBarHeight: CGFloat = 100
+        private var scrollTimer: Timer?
+        private var currentScrollSpeed: TimeInterval = 0.5
+        private let minScrollInterval: TimeInterval = 0.25
+        private let maxScrollInterval: TimeInterval = 0.6
+        
+        // Auto-Scroll am Rand
+        private var isAutoScrolling = false
+        private let autoScrollThreshold: CGFloat = 80
+        private let swipeThreshold: CGFloat = 12.0
+        
+        // Variablen für Scroll-Beschleunigung
+        private var lastScrollDirection: ScrollDirection?
+        private var scrollVelocityAccumulator: CGFloat = 0
+        private let scrollAccelerationFactor: CGFloat = 1.2
+        
+        // FIX: Flag um zu verhindern, dass Callbacks nach deinit feuern
+        private var isInvalidated = false
         
         init(cursorPosition: Binding<CGPoint>, screenSize: CGSize, onTap: @escaping () -> Void, onMenuPress: @escaping () -> Void, onPlayPause: @escaping () -> Void) {
             self._cursorPosition = cursorPosition
@@ -65,19 +89,32 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
         }
         
         func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+            guard !isInvalidated else { return }
+            
             let translation = gesture.translation(in: gesture.view)
             let velocity = gesture.velocity(in: gesture.view)
             
-            // Calculate movement with acceleration based on velocity
             let speed = sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
-            let accelerationFactor = max(1.0, min(acceleration, speed / 1000.0))
+            let accelerationFactor = max(1.0, min(acceleration, speed / 2000.0))
             
-            // Apply dead zone
             var deltaX = translation.x * sensitivity * accelerationFactor
             var deltaY = translation.y * sensitivity * accelerationFactor
             
             if abs(deltaX) < deadZone { deltaX = 0 }
             if abs(deltaY) < deadZone { deltaY = 0 }
+            
+            // Auto-Scroll am Rand
+            let currentY = cursorPosition.y
+            let isNearTop = currentY <= autoScrollThreshold
+            let isNearBottom = currentY >= (screenSize.height - autoScrollThreshold)
+            
+            if isNearTop && deltaY < -swipeThreshold {
+                onScroll?(.up)
+                deltaY = 0
+            } else if isNearBottom && deltaY > swipeThreshold {
+                onScroll?(.down)
+                deltaY = 0
+            }
             
             // Update cursor position with bounds checking
             let newPosition = CGPoint(
@@ -89,23 +126,105 @@ struct TVOSCursorGestureHandler: UIViewRepresentable {
             
             // Reset gesture translation for continuous movement
             gesture.setTranslation(.zero, in: gesture.view)
+            
+            // Stoppe Scrolling wenn Gesture endet
+            if gesture.state == .ended || gesture.state == .cancelled {
+                stopScrolling()
+            }
         }
         
         func handleTapGesture(_ gesture: UITapGestureRecognizer) {
-            print("🔥 Coordinator handleTapGesture aufgerufen!")
+            guard !isInvalidated else { return }
+            
+            // FIX: Immer onTap() aufrufen — der Cursor-Klick-Handler
+            // in CursorModeWebView entscheidet selbst, was passiert.
             onTap()
         }
         
         func handleMenuPress() {
+            guard !isInvalidated else { return }
+            stopScrolling()
             onMenuPress()
         }
         
         func handlePlayPause() {
+            guard !isInvalidated else { return }
             onPlayPause()
+        }
+        
+        // MARK: - Scroll Logic
+        private func getScrollDirection() -> ScrollDirection? {
+            if cursorPosition.y <= scrollEdgeThreshold {
+                return .up
+            } else if cursorPosition.y >= (screenSize.height - scrollEdgeThreshold) {
+                return .down
+            }
+            return nil
+        }
+        
+        private func startScrolling(direction: ScrollDirection) {
+            guard !isInvalidated else { return }
+            stopScrolling()
+            
+            lastScrollDirection = direction
+            
+            onScroll?(direction)
+            
+            scrollTimer = Timer.scheduledTimer(withTimeInterval: currentScrollSpeed, repeats: true) { [weak self] timer in
+                guard let self = self, !self.isInvalidated else {
+                    timer.invalidate()
+                    return
+                }
+                self.onScroll?(direction)
+                self.accelerateScrolling()
+            }
+        }
+        
+        private func accelerateScrolling() {
+            guard !isInvalidated else { return }
+            
+            scrollVelocityAccumulator += 0.005
+            let newSpeed = max(minScrollInterval, currentScrollSpeed - scrollVelocityAccumulator * 0.01)
+            
+            if abs(newSpeed - currentScrollSpeed) > 0.01 {
+                currentScrollSpeed = newSpeed
+                if let direction = lastScrollDirection {
+                    scrollTimer?.invalidate()
+                    scrollTimer = Timer.scheduledTimer(withTimeInterval: currentScrollSpeed, repeats: true) { [weak self] timer in
+                        guard let self = self, !self.isInvalidated else {
+                            timer.invalidate()
+                            return
+                        }
+                        self.onScroll?(direction)
+                    }
+                }
+            }
+        }
+        
+        private func stopScrolling() {
+            scrollTimer?.invalidate()
+            scrollTimer = nil
+            currentScrollSpeed = maxScrollInterval
+            scrollVelocityAccumulator = 0
+            lastScrollDirection = nil
         }
         
         private func clamp(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
             return Swift.max(min, Swift.min(max, value))
+        }
+        
+        deinit {
+            isInvalidated = true
+            if let timer = scrollTimer {
+                if Thread.isMainThread {
+                    timer.invalidate()
+                } else {
+                    DispatchQueue.main.sync {
+                        timer.invalidate()
+                    }
+                }
+            }
+            scrollTimer = nil
         }
     }
 }
@@ -138,31 +257,20 @@ class CursorGestureView: UIView {
     }
     
     private func setupGestures() {
-        print("🎮 Gesture setup wird initialisiert...")
-        
         // Pan gesture for cursor movement (Touchpad swipe)
         panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         panGesture.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
-        // maximumNumberOfTouches ist in tvOS nicht verfügbar
         addGestureRecognizer(panGesture)
-        print("🎮 Pan Gesture hinzugefügt")
         
         // Tap gesture for clicking (Touchpad press)
         tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tapGesture.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
-        // Entferne allowedPressTypes - kann Probleme verursachen
-        // tapGesture.allowedPressTypes = [NSNumber(value: UIPress.PressType.select.rawValue)]
         addGestureRecognizer(tapGesture)
-        print("🎮 Tap Gesture hinzugefügt")
         
-        // Enable user interaction
         isUserInteractionEnabled = true
-        print("🎮 User Interaction aktiviert")
-        print("🎮 Gesture Setup abgeschlossen")
     }
     
     private func setupGameController() {
-        // Listen for game controller connections
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(controllerDidConnect(_:)),
@@ -177,7 +285,6 @@ class CursorGestureView: UIView {
             object: nil
         )
         
-        // Setup if controller is already connected
         if let controller = GCController.controllers().first {
             setupControllerHandlers(controller)
         }
@@ -195,49 +302,52 @@ class CursorGestureView: UIView {
     private func setupControllerHandlers(_ controller: GCController) {
         gameController = controller
         
-        // Handle Siri Remote microGamepad
         if let microGamepad = controller.microGamepad {
             microGamepad.allowsRotation = true
             
-            // Touchpad for cursor movement
             microGamepad.dpad.valueChangedHandler = { (dpad, xValue, yValue) in
-                // This will be handled by pan gesture instead
             }
             
-            // A button for click
             microGamepad.buttonA.valueChangedHandler = { [weak self] (button, value, pressed) in
                 if pressed {
-                    self?.delegate?.handleTapGesture(UITapGestureRecognizer())
+                    DispatchQueue.main.async {
+                        self?.delegate?.handleTapGesture(UITapGestureRecognizer())
+                    }
                 }
             }
             
-            // Menu button
             microGamepad.buttonMenu.valueChangedHandler = { [weak self] (button, value, pressed) in
                 if pressed {
-                    self?.delegate?.handleMenuPress()
+                    DispatchQueue.main.async {
+                        self?.delegate?.handleMenuPress()
+                    }
                 }
             }
         }
         
-        // Handle extended gamepad if available
         if let extendedGamepad = controller.extendedGamepad {
             extendedGamepad.buttonA.valueChangedHandler = { [weak self] (button, value, pressed) in
                 if pressed {
-                    self?.delegate?.handleTapGesture(UITapGestureRecognizer())
+                    DispatchQueue.main.async {
+                        self?.delegate?.handleTapGesture(UITapGestureRecognizer())
+                    }
                 }
             }
             
             extendedGamepad.buttonMenu.valueChangedHandler = { [weak self] (button, value, pressed) in
                 if pressed {
-                    self?.delegate?.handleMenuPress()
+                    DispatchQueue.main.async {
+                        self?.delegate?.handleMenuPress()
+                    }
                 }
             }
             
-            // Play/Pause button für Extended Gamepad
             if let playPauseButton = extendedGamepad.buttonOptions {
                 playPauseButton.valueChangedHandler = { [weak self] (button, value, pressed) in
                     if pressed {
-                        self?.delegate?.handlePlayPause()
+                        DispatchQueue.main.async {
+                            self?.delegate?.handlePlayPause()
+                        }
                     }
                 }
             }
@@ -245,51 +355,24 @@ class CursorGestureView: UIView {
     }
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        print("🎮 Pan Gesture erkannt: \(gesture.state)")
         delegate?.handlePanGesture(gesture)
     }
     
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
-        print("🔥 TAP GESTURE ERKANNT! State: \(gesture.state)")
         if gesture.state == .ended {
-            print("🔥 Tap gesture beendet - delegate wird aufgerufen")
             delegate?.handleTapGesture(gesture)
         }
     }
     
     override var canBecomeFocused: Bool {
-        print("🎯 canBecomeFocused aufgerufen: true")
         return true
     }
     
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        print("🎮 touchesBegan: \(touches.count) touches")
-        super.touchesBegan(touches, with: event)
-    }
-    
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        print("🎮 touchesEnded: \(touches.count) touches")
-        super.touchesEnded(touches, with: event)
-    }
-    
-    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        print("🎮 pressesBegan: \(presses.count) presses")
-        for press in presses {
-            print("🎮 Press Type: \(press.type.rawValue)")
-        }
-        super.pressesBegan(presses, with: event)
-    }
-    
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        print("🎮 pressesEnded: \(presses.count) presses")
         for press in presses {
-            print("🎮 Press Type: \(press.type.rawValue)")
-            // Direkte Behandlung des Select-Buttons
             if press.type == .select {
-                print("🔥 SELECT BUTTON GEDRÜCKT - direkter Tap!")
                 delegate?.handleTapGesture(UITapGestureRecognizer())
             } else if press.type == .playPause {
-                print("🔥 PLAY/PAUSE BUTTON GEDRÜCKT!")
                 delegate?.handlePlayPause()
             }
         }
@@ -308,6 +391,7 @@ struct CursorGestureModifier: ViewModifier {
     let onTap: () -> Void
     let onMenuPress: () -> Void
     let onPlayPause: () -> Void
+    let onScroll: ((ScrollDirection) -> Void)?
     
     func body(content: Content) -> some View {
         content
@@ -317,7 +401,8 @@ struct CursorGestureModifier: ViewModifier {
                     screenSize: screenSize,
                     onTap: onTap,
                     onMenuPress: onMenuPress,
-                    onPlayPause: onPlayPause
+                    onPlayPause: onPlayPause,
+                    onScroll: onScroll
                 )
             )
     }
@@ -329,14 +414,16 @@ extension View {
         screenSize: CGSize,
         onTap: @escaping () -> Void,
         onMenuPress: @escaping () -> Void = {},
-        onPlayPause: @escaping () -> Void = {}
+        onPlayPause: @escaping () -> Void = {},
+        onScroll: ((ScrollDirection) -> Void)? = nil
     ) -> some View {
         modifier(CursorGestureModifier(
             cursorPosition: cursorPosition,
             screenSize: screenSize,
             onTap: onTap,
             onMenuPress: onMenuPress,
-            onPlayPause: onPlayPause
+            onPlayPause: onPlayPause,
+            onScroll: onScroll
         ))
     }
 }

@@ -8,47 +8,11 @@ import Combine
 import os.log
 
 /// Service für die Web-Suche.
-@MainActor
-class SearchService: ObservableObject {
+/// Hinweis: Netzwerk-Operationen laufen NICHT auf dem Main Actor.
+class SearchService {
     
     // MARK: - Logger
     private let logger = Logger(subsystem: "AppleTVBrowser", category: "SearchService")
-    
-    // MARK: - Error Types
-    enum SearchError: LocalizedError {
-        case invalidURL
-        case invalidQuery
-        case networkError(Error)
-        case parsingError
-        case noResults
-        case rateLimited
-        case backendError(String)
-        case apiKeyMissing
-        case apiQuotaExceeded
-        
-        var errorDescription: String? {
-            switch self {
-            case .invalidURL:
-                return "Ungültige Such-URL"
-            case .invalidQuery:
-                return "Ungültige Suchanfrage"
-            case .networkError(let error):
-                return "Netzwerkfehler: \(error.localizedDescription)"
-            case .parsingError:
-                return "Fehler beim Verarbeiten der Suchergebnisse"
-            case .noResults:
-                return "Keine Ergebnisse gefunden"
-            case .rateLimited:
-                return "Zu viele Anfragen. Bitte warte einen Moment."
-            case .backendError(let message):
-                return "Backend-Fehler: \(message)"
-            case .apiKeyMissing:
-                return "API-Key nicht konfiguriert"
-            case .apiQuotaExceeded:
-                return "API-Limit erreicht. Versuche es später erneut."
-            }
-        }
-    }
     
     // MARK: - Configuration
     private struct Configuration {
@@ -65,7 +29,7 @@ class SearchService: ObservableObject {
     
     // MARK: - Properties
     private var session: URLSession
-    @Published var wikipediaInfos: [String: WikipediaInfo] = [:]
+    private var wikipediaInfos: [String: WikipediaInfo] = [:]
     
     // MARK: - Initialization
     init() {
@@ -158,7 +122,6 @@ class SearchService: ObservableObject {
         var results: [SearchResult] = []
         var seenURLs = Set<String>()
         
-        // Pattern für DuckDuckGo HTML result__a Links
         let patterns = [
             "<a[^>]*class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>([^<]+)</a>",
             "<a[^>]*href=\"([^\"]+)\"[^>]*class=\"result__a\"[^>]*>([^<]+)</a>"
@@ -182,7 +145,6 @@ class SearchService: ObservableObject {
                 var urlString = String(html[urlRange])
                 let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
                 
-                // Handle DuckDuckGo redirect URLs
                 if urlString.contains("//duckduckgo.com/l/?") {
                     if let uddgRange = urlString.range(of: "uddg=") {
                         var encodedURL = String(urlString[uddgRange.upperBound...])
@@ -195,7 +157,6 @@ class SearchService: ObservableObject {
                     }
                 }
                 
-                // Validiere URL
                 guard urlString.hasPrefix("http"),
                       !title.isEmpty,
                       title.count > 2,
@@ -206,7 +167,6 @@ class SearchService: ObservableObject {
                 
                 seenURLs.insert(urlString)
                 
-                // Versuche Beschreibung zu extrahieren
                 let description = extractDescription(for: urlString, from: html)
                 
                 results.append(SearchResult(
@@ -247,7 +207,6 @@ class SearchService: ObservableObject {
         
         logger.debug("📤 DuckDuckGo Lite Request: \(url.absoluteString)")
         
-        // Retry logic für 202 Status
         for attempt in 0..<Configuration.maxRetries {
             let (data, response) = try await session.data(for: request)
             
@@ -282,7 +241,6 @@ class SearchService: ObservableObject {
         var results: [SearchResult] = []
         var seenURLs = Set<String>()
         
-        // Pattern für DuckDuckGo Lite result-link
         let pattern = "<a\\s+rel=\"nofollow\"\\s+href=\"([^\"]+)\"[^>]*class=['\"]result-link['\"]>([^<]+)</a>"
         
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
@@ -302,12 +260,10 @@ class SearchService: ObservableObject {
             var urlString = String(html[urlRange])
             let title = removingHTMLTags(from: String(html[titleRange])).trimmingCharacters(in: .whitespacesAndNewlines)
             
-            // Skip ads
             if urlString.contains("ad_domain") || urlString.contains("ad_provider") {
                 continue
             }
             
-            // Handle DuckDuckGo redirects
             if urlString.contains("duckduckgo.com/l/?uddg=") {
                 if let uddgRange = urlString.range(of: "uddg=") {
                     var encodedURL = String(urlString[uddgRange.upperBound...])
@@ -358,7 +314,6 @@ class SearchService: ObservableObject {
     
     // MARK: - Image Search
     
-    /// Führt eine Bilder-Suche durch
     func searchImages(query: String) async throws -> [SearchResult] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -368,7 +323,6 @@ class SearchService: ObservableObject {
         
         logger.info("🖼️ Bildersuche für: \(trimmedQuery)")
         
-        // Prüfe ob Google API konfiguriert ist
         if APIConfiguration.isGoogleSearchConfigured {
             do {
                 let results = try await searchGoogleImages(query: trimmedQuery)
@@ -380,7 +334,6 @@ class SearchService: ObservableObject {
             }
         }
         
-        // Fallback: Unsplash
         logger.info("🔄 Verwende Unsplash Fallback für Bilder")
         return await searchUnsplashImages(query: trimmedQuery)
     }
@@ -441,28 +394,28 @@ class SearchService: ObservableObject {
         var results: [SearchResult] = []
         
         for i in 1...12 {
-            let imageURL = "https://source.unsplash.com/800x600/?\(encodedQuery)&sig=\(i)"
-            let thumbnailURL = "https://source.unsplash.com/400x300/?\(encodedQuery)&sig=\(i)"
+            let seed = "\(encodedQuery)\(i)".hashValue
+            let imageURL = "https://picsum.photos/seed/\(abs(seed))/800/600"
+            let thumbnailURL = "https://picsum.photos/seed/\(abs(seed))/400/300"
             
             results.append(SearchResult(
                 title: "\(query) - Bild \(i)",
                 url: imageURL,
-                description: "Bild von Unsplash zu '\(query)'",
+                description: "Bild zu '\(query)'",
                 contentType: .image,
                 thumbnailURL: thumbnailURL,
                 imageWidth: 800,
                 imageHeight: 600,
-                source: "Unsplash"
+                source: "Picsum"
             ))
         }
         
-        logger.info("✅ Unsplash: \(results.count) Bilder")
+        logger.info("✅ Picsum: \(results.count) Bilder")
         return results
     }
     
     // MARK: - Video Search
     
-    /// Führt eine Video-Suche durch (YouTube)
     func searchVideos(query: String) async throws -> [SearchResult] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -594,8 +547,6 @@ class SearchService: ObservableObject {
     }
     
     private func extractDescription(for url: String, from html: String) -> String {
-        // Versuche die Beschreibung für eine URL zu finden
-        // DuckDuckGo hat result__snippet Klasse für Beschreibungen
         let pattern = "class=\"result__snippet[^\"]*\"[^>]*>([^<]+)</[^>]+>"
         
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {

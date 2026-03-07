@@ -5,11 +5,10 @@
 
 import SwiftUI
 import SwiftData
-import Observation
 import Combine
 
 @Observable
-final class SearchViewModel: ObservableObject {
+final class SearchViewModel {
     // MARK: - State
     var searchQuery: String = ""
     var searchResults: [SearchResult] = []
@@ -23,15 +22,26 @@ final class SearchViewModel: ObservableObject {
     var searchHistory: [String] = []
     
     // MARK: - Dependencies
-    private let searchService = SearchService()
+    private let searchService: SearchService
     private let urlValidator = URLValidator()
     var modelContext: ModelContext?
     
-    // MARK: - Cache
-    private var searchCache: [String: [SearchResult]] = [:]
-    private var imageCache: [String: [SearchResult]] = [:]
-    private var videoCache: [String: [SearchResult]] = [:]
+    // MARK: - LRU Cache
+    private var searchCache: [String: CacheEntry<[SearchResult]>] = [:]
+    private var imageCache: [String: CacheEntry<[SearchResult]>] = [:]
+    private var videoCache: [String: CacheEntry<[SearchResult]>] = [:]
     private let maxCacheSize = 50
+    
+    private struct CacheEntry<T> {
+        let value: T
+        let timestamp: Date
+    }
+    
+    // MARK: - Initialization
+    
+    init(searchService: SearchService = SearchService()) {
+        self.searchService = searchService
+    }
     
     // MARK: - Computed Properties
     var hasResults: Bool {
@@ -91,9 +101,9 @@ final class SearchViewModel: ObservableObject {
         let hasCachedVideos = videoCache[cacheKey] != nil
         
         if hasCachedWeb && hasCachedImages && hasCachedVideos {
-            searchResults = searchCache[cacheKey] ?? []
-            imageResults = imageCache[cacheKey] ?? []
-            videoResults = videoCache[cacheKey] ?? []
+            searchResults = searchCache[cacheKey]?.value ?? []
+            imageResults = imageCache[cacheKey]?.value ?? []
+            videoResults = videoCache[cacheKey]?.value ?? []
             return
         }
         
@@ -104,100 +114,99 @@ final class SearchViewModel: ObservableObject {
         videoResults = []
         wikipediaInfo = nil
         
-        do {
-            // Parallele Suche für alle Content-Types
-            async let webSearchTask: [SearchResult] = {
-                if hasCachedWeb {
-                    return searchCache[cacheKey] ?? []
-                }
+        // Parallele Suche für alle Content-Types
+        async let webSearchTask: [SearchResult] = {
+            if hasCachedWeb {
+                return self.searchCache[cacheKey]?.value ?? []
+            }
+            do {
+                return try await self.searchService.search(query: sanitizedQuery)
+            } catch {
+                print("⚠️ Web-Suche Fehler: \(error.localizedDescription)")
+                return []
+            }
+        }()
+        
+        async let imageSearchTask: [SearchResult] = {
+            if hasCachedImages {
+                return self.imageCache[cacheKey]?.value ?? []
+            }
+            do {
+                return try await self.searchService.searchImages(query: sanitizedQuery)
+            } catch {
+                print("⚠️ Bilder-Suche Fehler: \(error.localizedDescription)")
+                return []
+            }
+        }()
+        
+        async let videoSearchTask: [SearchResult] = {
+            if hasCachedVideos {
+                return self.videoCache[cacheKey]?.value ?? []
+            }
+            if APIConfiguration.isYouTubeConfigured {
                 do {
-                    return try await searchService.search(query: sanitizedQuery)
+                    return try await self.searchService.searchVideos(query: sanitizedQuery)
                 } catch {
-                    print("⚠️ Web-Suche Fehler: \(error.localizedDescription)")
+                    print("⚠️ Video-Suche Fehler: \(error.localizedDescription)")
                     return []
                 }
-            }()
-            
-            async let imageSearchTask: [SearchResult] = {
-                if hasCachedImages {
-                    return imageCache[cacheKey] ?? []
-                }
-                do {
-                    return try await searchService.searchImages(query: sanitizedQuery)
-                } catch {
-                    print("⚠️ Bilder-Suche Fehler: \(error.localizedDescription)")
-                    return []
-                }
-            }()
-            
-            async let videoSearchTask: [SearchResult] = {
-                if hasCachedVideos {
-                    return videoCache[cacheKey] ?? []
-                }
-                if APIConfiguration.isYouTubeConfigured {
-                    do {
-                        return try await searchService.searchVideos(query: sanitizedQuery)
-                    } catch {
-                        print("⚠️ Video-Suche Fehler: \(error.localizedDescription)")
-                        return []
-                    }
-                } else {
-                    print("ℹ️ YouTube API nicht konfiguriert - überspringe Video-Suche")
-                    return []
-                }
-            }()
-            
-            async let wikipediaTask: WikipediaInfo? = {
-                do {
-                    return try await searchService.searchWikipedia(query: sanitizedQuery)
-                } catch {
-                    print("⚠️ Wikipedia Fehler: \(error.localizedDescription)")
-                    return nil
-                }
-            }()
-            
-            // Warte auf alle Ergebnisse
-            let webResults = await webSearchTask
-            let images = await imageSearchTask
-            let videos = await videoSearchTask
-            let wiki = await wikipediaTask
-            
-            // Update UI mit Ergebnissen
-            self.searchResults = webResults
-            self.imageResults = images
-            self.videoResults = videos
-            self.wikipediaInfo = wiki
-            
-            // Cache alle Ergebnisse
-            if !webResults.isEmpty {
-                searchCache[cacheKey] = webResults
+            } else {
+                print("ℹ️ YouTube API nicht konfiguriert - überspringe Video-Suche")
+                return []
             }
-            if !images.isEmpty {
-                imageCache[cacheKey] = images
+        }()
+        
+        async let wikipediaTask: WikipediaInfo? = {
+            do {
+                return try await self.searchService.searchWikipedia(query: sanitizedQuery)
+            } catch {
+                print("⚠️ Wikipedia Fehler: \(error.localizedDescription)")
+                return nil
             }
-            if !videos.isEmpty {
-                videoCache[cacheKey] = videos
-            }
-            
-            // Limit cache size
-            limitCacheSize()
-            
-            // Add to history only for successful searches
-            if !webResults.isEmpty || !images.isEmpty || !videos.isEmpty {
-                addToHistory(sanitizedQuery)
-            }
-            
-            print("✅ Suche abgeschlossen - Web: \(webResults.count), Bilder: \(images.count), Videos: \(videos.count)")
-            
+        }()
+        
+        // Warte auf alle Ergebnisse
+        let webResults = await webSearchTask
+        let images = await imageSearchTask
+        let videos = await videoSearchTask
+        let wiki = await wikipediaTask
+        
+        // Update UI mit Ergebnissen
+        self.searchResults = webResults
+        self.imageResults = images
+        self.videoResults = videos
+        self.wikipediaInfo = wiki
+        
+        // Cache alle Ergebnisse mit Zeitstempel (LRU)
+        let now = Date()
+        if !webResults.isEmpty {
+            searchCache[cacheKey] = CacheEntry(value: webResults, timestamp: now)
         }
+        if !images.isEmpty {
+            imageCache[cacheKey] = CacheEntry(value: images, timestamp: now)
+        }
+        if !videos.isEmpty {
+            videoCache[cacheKey] = CacheEntry(value: videos, timestamp: now)
+        }
+        
+        // Limit cache size using LRU eviction
+        limitCacheSize()
+        
+        // Add to history only for successful searches
+        if !webResults.isEmpty || !images.isEmpty || !videos.isEmpty {
+            addToHistory(sanitizedQuery)
+        }
+        
+        print("✅ Suche abgeschlossen - Web: \(webResults.count), Bilder: \(images.count), Videos: \(videos.count)")
         
         isSearching = false
     }
     
-    // MARK: - Cache Management
+    // MARK: - Cache Management (LRU)
     private func limitCacheSize() {
         if searchCache.count > maxCacheSize {
-            let keysToRemove = searchCache.keys.shuffled().prefix(searchCache.count - maxCacheSize)
+            let sortedKeys = searchCache.sorted { $0.value.timestamp < $1.value.timestamp }
+            let keysToRemove = sortedKeys.prefix(searchCache.count - maxCacheSize).map(\.key)
             for key in keysToRemove {
                 searchCache.removeValue(forKey: key)
                 imageCache.removeValue(forKey: key)

@@ -38,11 +38,11 @@ struct SearchTabBar: View {
         .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
         .padding(.vertical, TVOSDesign.Spacing.elementSpacing)
         .background(
-            // Subtiler Hintergrund
             Rectangle()
                 .fill(TVOSDesign.Colors.background.opacity(0.95))
                 .background(.ultraThinMaterial.opacity(0.5))
         )
+        .accessibilityLabel("Such-Tabs")
     }
 }
 
@@ -58,12 +58,12 @@ struct SearchTab: View {
     
     var body: some View {
         Button(action: {
-            // Smooth press animation
             withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
                 isPressed = true
             }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                     isPressed = false
                 }
@@ -71,12 +71,10 @@ struct SearchTab: View {
             }
         }) {
             HStack(spacing: 12) {
-                // Icon mit sanfter Animation
                 Image(systemName: contentType.iconName)
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(iconColor)
                 
-                // Tab-Text
                 Text(contentType.displayName)
                     .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
                     .foregroundColor(textColor)
@@ -85,12 +83,10 @@ struct SearchTab: View {
             .padding(.vertical, 18)
             .frame(minHeight: TVOSDesign.Spacing.minTouchTarget)
             .background(
-                // Dynamischer Hintergrund basierend auf Zustand
                 RoundedRectangle(cornerRadius: 16)
                     .fill(backgroundColor)
             )
             .overlay(
-                // Blaue Umrandung für ausgewählten Tab
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(
                         isSelected ? TVOSDesign.Colors.accentBlue : Color.clear,
@@ -98,7 +94,6 @@ struct SearchTab: View {
                     )
             )
             .overlay(
-                // Focus Ring (weiß, über der blauen Umrandung)
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(
                         isFocused ? Color.white.opacity(0.9) : Color.clear,
@@ -119,18 +114,20 @@ struct SearchTab: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.75), value: isFocused)
         .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isPressed)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isSelected)
+        .accessibilityLabel("\(contentType.displayName) Tab")
+        .accessibilityValue(isSelected ? "Ausgewählt" : "")
     }
     
     // MARK: - Computed Properties
     
     private var backgroundColor: Color {
         if isPressed {
-            return isSelected 
-                ? TVOSDesign.Colors.pressedCardBackground 
+            return isSelected
+                ? TVOSDesign.Colors.pressedCardBackground
                 : TVOSDesign.Colors.cardBackground.opacity(0.8)
         } else if isFocused {
-            return isSelected 
-                ? TVOSDesign.Colors.focusedCardBackground 
+            return isSelected
+                ? TVOSDesign.Colors.focusedCardBackground
                 : TVOSDesign.Colors.focusedCardBackground.opacity(0.7)
         } else if isSelected {
             return TVOSDesign.Colors.cardBackground
