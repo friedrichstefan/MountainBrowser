@@ -26,37 +26,50 @@
 			containerPortal = 39EC34712F3A03F400E89830 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 39EC34782F3A03F400E89830;
-			remoteInfo = AppleTVBrowser;
+			remoteInfo = MountainBrowser;
 		};
 		39EC34932F3A03F800E89830 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 39EC34712F3A03F400E89830 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 39EC34782F3A03F400E89830;
-			remoteInfo = AppleTVBrowser;
+			remoteInfo = MountainBrowser;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		39EC34792F3A03F400E89830 /* AppleTVBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AppleTVBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		39EC34882F3A03F800E89830 /* AppleTVBrowserTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppleTVBrowserTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		39EC34922F3A03F800E89830 /* AppleTVBrowserUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppleTVBrowserUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		39EC34792F3A03F400E89830 /* MountainBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MountainBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		39EC34882F3A03F800E89830 /* MountainBrowserTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MountainBrowserTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		39EC34922F3A03F800E89830 /* MountainBrowserUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MountainBrowserUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		39EC347C2F3A03F400E89831 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 39EC34782F3A03F400E89830 /* MountainBrowser */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		39EC347B2F3A03F400E89830 /* AppleTVBrowser */ = {
+		39EC347B2F3A03F400E89830 /* MountainBrowser */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AppleTVBrowser;
+			exceptions = (
+				39EC347C2F3A03F400E89831 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+			path = MountainBrowser;
 			sourceTree = "<group>";
 		};
-		39EC348B2F3A03F800E89830 /* AppleTVBrowserTests */ = {
+		39EC348B2F3A03F800E89830 /* MountainBrowserTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AppleTVBrowserTests;
+			path = MountainBrowserTests;
 			sourceTree = "<group>";
 		};
-		39EC34952F3A03F800E89830 /* AppleTVBrowserUITests */ = {
+		39EC34952F3A03F800E89830 /* MountainBrowserUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AppleTVBrowserUITests;
+			path = MountainBrowserUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -89,9 +102,9 @@
 		39EC34702F3A03F400E89830 = {
 			isa = PBXGroup;
 			children = (
-				39EC347B2F3A03F400E89830 /* AppleTVBrowser */,
-				39EC348B2F3A03F800E89830 /* AppleTVBrowserTests */,
-				39EC34952F3A03F800E89830 /* AppleTVBrowserUITests */,
+				39EC347B2F3A03F400E89830 /* MountainBrowser */,
+				39EC348B2F3A03F800E89830 /* MountainBrowserTests */,
+				39EC34952F3A03F800E89830 /* MountainBrowserUITests */,
 				39EC347A2F3A03F400E89830 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -99,9 +112,9 @@
 		39EC347A2F3A03F400E89830 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				39EC34792F3A03F400E89830 /* AppleTVBrowser.app */,
-				39EC34882F3A03F800E89830 /* AppleTVBrowserTests.xctest */,
-				39EC34922F3A03F800E89830 /* AppleTVBrowserUITests.xctest */,
+				39EC34792F3A03F400E89830 /* MountainBrowser.app */,
+				39EC34882F3A03F800E89830 /* MountainBrowserTests.xctest */,
+				39EC34922F3A03F800E89830 /* MountainBrowserUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -109,9 +122,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		39EC34782F3A03F400E89830 /* AppleTVBrowser */ = {
+		39EC34782F3A03F400E89830 /* MountainBrowser */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 39EC349C2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "AppleTVBrowser" */;
+			buildConfigurationList = 39EC349C2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "MountainBrowser" */;
 			buildPhases = (
 				39EC34752F3A03F400E89830 /* Sources */,
 				39EC34762F3A03F400E89830 /* Frameworks */,
@@ -123,18 +136,18 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				39EC347B2F3A03F400E89830 /* AppleTVBrowser */,
+				39EC347B2F3A03F400E89830 /* MountainBrowser */,
 			);
-			name = AppleTVBrowser;
+			name = MountainBrowser;
 			packageProductDependencies = (
 			);
-			productName = AppleTVBrowser;
-			productReference = 39EC34792F3A03F400E89830 /* AppleTVBrowser.app */;
+			productName = MountainBrowser;
+			productReference = 39EC34792F3A03F400E89830 /* MountainBrowser.app */;
 			productType = "com.apple.product-type.application";
 		};
-		39EC34872F3A03F800E89830 /* AppleTVBrowserTests */ = {
+		39EC34872F3A03F800E89830 /* MountainBrowserTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 39EC349F2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "AppleTVBrowserTests" */;
+			buildConfigurationList = 39EC349F2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "MountainBrowserTests" */;
 			buildPhases = (
 				39EC34842F3A03F800E89830 /* Sources */,
 				39EC34852F3A03F800E89830 /* Frameworks */,
@@ -146,18 +159,18 @@
 				39EC348A2F3A03F800E89830 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				39EC348B2F3A03F800E89830 /* AppleTVBrowserTests */,
+				39EC348B2F3A03F800E89830 /* MountainBrowserTests */,
 			);
-			name = AppleTVBrowserTests;
+			name = MountainBrowserTests;
 			packageProductDependencies = (
 			);
-			productName = AppleTVBrowserTests;
-			productReference = 39EC34882F3A03F800E89830 /* AppleTVBrowserTests.xctest */;
+			productName = MountainBrowserTests;
+			productReference = 39EC34882F3A03F800E89830 /* MountainBrowserTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		39EC34912F3A03F800E89830 /* AppleTVBrowserUITests */ = {
+		39EC34912F3A03F800E89830 /* MountainBrowserUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 39EC34A22F3A03F800E89830 /* Build configuration list for PBXNativeTarget "AppleTVBrowserUITests" */;
+			buildConfigurationList = 39EC34A22F3A03F800E89830 /* Build configuration list for PBXNativeTarget "MountainBrowserUITests" */;
 			buildPhases = (
 				39EC348E2F3A03F800E89830 /* Sources */,
 				39EC348F2F3A03F800E89830 /* Frameworks */,
@@ -169,13 +182,13 @@
 				39EC34942F3A03F800E89830 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				39EC34952F3A03F800E89830 /* AppleTVBrowserUITests */,
+				39EC34952F3A03F800E89830 /* MountainBrowserUITests */,
 			);
-			name = AppleTVBrowserUITests;
+			name = MountainBrowserUITests;
 			packageProductDependencies = (
 			);
-			productName = AppleTVBrowserUITests;
-			productReference = 39EC34922F3A03F800E89830 /* AppleTVBrowserUITests.xctest */;
+			productName = MountainBrowserUITests;
+			productReference = 39EC34922F3A03F800E89830 /* MountainBrowserUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -204,7 +217,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 39EC34742F3A03F400E89830 /* Build configuration list for PBXProject "AppleTVBrowser" */;
+			buildConfigurationList = 39EC34742F3A03F400E89830 /* Build configuration list for PBXProject "MountainBrowser" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -221,9 +234,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				39EC34782F3A03F400E89830 /* AppleTVBrowser */,
-				39EC34872F3A03F800E89830 /* AppleTVBrowserTests */,
-				39EC34912F3A03F800E89830 /* AppleTVBrowserUITests */,
+				39EC34782F3A03F400E89830 /* MountainBrowser */,
+				39EC34872F3A03F800E89830 /* MountainBrowserTests */,
+				39EC34912F3A03F800E89830 /* MountainBrowserUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -279,12 +292,12 @@
 /* Begin PBXTargetDependency section */
 		39EC348A2F3A03F800E89830 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 39EC34782F3A03F400E89830 /* AppleTVBrowser */;
+			target = 39EC34782F3A03F400E89830 /* MountainBrowser */;
 			targetProxy = 39EC34892F3A03F800E89830 /* PBXContainerItemProxy */;
 		};
 		39EC34942F3A03F800E89830 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 39EC34782F3A03F400E89830 /* AppleTVBrowser */;
+			target = 39EC34782F3A03F400E89830 /* MountainBrowser */;
 			targetProxy = 39EC34932F3A03F800E89830 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -421,14 +434,14 @@
 				DEVELOPMENT_TEAM = A4HCRKN53K;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = AppleTVBrowser/Info.plist;
+				INFOPLIST_FILE = MountainBrowser/Info.plist;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Stefan.AppleTVBrowser;
+				PRODUCT_BUNDLE_IDENTIFIER = Stefan.MountainBrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -450,14 +463,14 @@
 				DEVELOPMENT_TEAM = A4HCRKN53K;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = AppleTVBrowser/Info.plist;
+				INFOPLIST_FILE = MountainBrowser/Info.plist;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Stefan.AppleTVBrowser;
+				PRODUCT_BUNDLE_IDENTIFIER = Stefan.MountainBrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -478,7 +491,7 @@
 				DEVELOPMENT_TEAM = A4HCRKN53K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Stefan.AppleTVBrowserTests;
+				PRODUCT_BUNDLE_IDENTIFIER = Stefan.MountainBrowserTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -486,7 +499,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AppleTVBrowser.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AppleTVBrowser";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MountainBrowser.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MountainBrowser";
 				TVOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Debug;
@@ -500,7 +513,7 @@
 				DEVELOPMENT_TEAM = A4HCRKN53K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Stefan.AppleTVBrowserTests;
+				PRODUCT_BUNDLE_IDENTIFIER = Stefan.MountainBrowserTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -508,7 +521,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AppleTVBrowser.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AppleTVBrowser";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MountainBrowser.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MountainBrowser";
 				TVOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Release;
@@ -521,7 +534,7 @@
 				DEVELOPMENT_TEAM = A4HCRKN53K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Stefan.AppleTVBrowserUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = Stefan.MountainBrowserUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -529,7 +542,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TEST_TARGET_NAME = AppleTVBrowser;
+				TEST_TARGET_NAME = MountainBrowser;
 			};
 			name = Debug;
 		};
@@ -541,7 +554,7 @@
 				DEVELOPMENT_TEAM = A4HCRKN53K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Stefan.AppleTVBrowserUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = Stefan.MountainBrowserUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -549,14 +562,14 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 3;
-				TEST_TARGET_NAME = AppleTVBrowser;
+				TEST_TARGET_NAME = MountainBrowser;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		39EC34742F3A03F400E89830 /* Build configuration list for PBXProject "AppleTVBrowser" */ = {
+		39EC34742F3A03F400E89830 /* Build configuration list for PBXProject "MountainBrowser" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				39EC349A2F3A03F800E89830 /* Debug */,
@@ -565,7 +578,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		39EC349C2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "AppleTVBrowser" */ = {
+		39EC349C2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "MountainBrowser" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				39EC349D2F3A03F800E89830 /* Debug */,
@@ -574,7 +587,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		39EC349F2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "AppleTVBrowserTests" */ = {
+		39EC349F2F3A03F800E89830 /* Build configuration list for PBXNativeTarget "MountainBrowserTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				39EC34A02F3A03F800E89830 /* Debug */,
@@ -583,7 +596,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		39EC34A22F3A03F800E89830 /* Build configuration list for PBXNativeTarget "AppleTVBrowserUITests" */ = {
+		39EC34A22F3A03F800E89830 /* Build configuration list for PBXNativeTarget "MountainBrowserUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				39EC34A32F3A03F800E89830 /* Debug */,
