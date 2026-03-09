@@ -13,6 +13,9 @@ backend/.env
 backend/node_modules/
 backend/.netlify/
 
+# API Keys (WICHTIG: Niemals API-Keys committen!)
+MountainBrowser/APIKeys.plist
+
 # Logs
 *.log
 npm-debug.log*
