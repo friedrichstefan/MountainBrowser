@@ -273,6 +273,101 @@ enum L10n {
         nonisolated(unsafe) static let errorArticleNotFound = String(localized: "wikipedia.error.articleNotFound", defaultValue: "Wikipedia-Artikel nicht gefunden")
     }
     
+    // MARK: - Premium
+    enum Premium {
+        static let premium = String(localized: "premium.premium", defaultValue: "Premium")
+        static let cursorMode = String(localized: "premium.cursorMode", defaultValue: "Cursor Mode")
+        static let imageSearch = String(localized: "premium.imageSearch", defaultValue: "Image Search")
+        static let cursorModeDesc = String(localized: "premium.cursorModeDesc", defaultValue: "Navigate freely on websites with a cursor. Click on links, buttons, and forms.")
+        static let imageSearchDesc = String(localized: "premium.imageSearchDesc", defaultValue: "Search the web for images without limits. View all results in full screen.")
+        static let generalDesc = String(localized: "premium.generalDesc", defaultValue: "Unlock all premium features and use the browser without limits.")
+        static let unlockPremium = String(localized: "premium.unlockPremium", defaultValue: "Unlock Premium")
+        static let subscribe = String(localized: "premium.subscribe", defaultValue: "Subscribe")
+        static let popular = String(localized: "premium.popular", defaultValue: "POPULAR")
+        static let perMonth = String(localized: "premium.perMonth", defaultValue: "per month")
+        static let perYear = String(localized: "premium.perYear", defaultValue: "per year")
+        static let restorePurchases = String(localized: "premium.restorePurchases", defaultValue: "Restore Purchases")
+        static let allUpdates = String(localized: "premium.allUpdates", defaultValue: "All Updates")
+        static let allUpdatesDesc = String(localized: "premium.allUpdatesDesc", defaultValue: "Future features included")
+        static let cursorModeShort = String(localized: "premium.cursorModeShort", defaultValue: "Click links & navigate")
+        static let imageSearchShort = String(localized: "premium.imageSearchShort", defaultValue: "Unlimited image search")
+        static let processingPurchase = String(localized: "premium.processingPurchase", defaultValue: "Processing purchase...")
+        
+        // Status
+        static let statusActive = String(localized: "premium.statusActive", defaultValue: "Premium Active")
+        static let statusFree = String(localized: "premium.statusFree", defaultValue: "Free Version")
+        static let manageSubscription = String(localized: "premium.manageSubscription", defaultValue: "Manage Subscription")
+        static let manageSubscriptionSubtitle = String(localized: "premium.manageSubscriptionSubtitle", defaultValue: "View or cancel your subscription")
+        
+        // Paywall
+        static let premiumRequired = String(localized: "premium.premiumRequired", defaultValue: "Premium Required")
+        static let cursorModePremiumOnly = String(localized: "premium.cursorModePremiumOnly", defaultValue: "Cursor Mode is only available with Premium.")
+        static let imageSearchLimit = String(localized: "premium.imageSearchLimit", defaultValue: "Image search limit reached")
+        static let unlockAllImages = String(localized: "premium.unlockAllImages", defaultValue: "Unlock all images")
+        static let freePreviewLimit = String(localized: "premium.freePreviewLimit", defaultValue: "Free preview limit")
+        static func remainingSearches(_ count: Int) -> String {
+            return "\(count) " + String(localized: "premium.remainingSearchesSuffix", defaultValue: "free searches remaining today")
+        }
+        static func moreImagesAvailable(_ count: Int) -> String {
+            return "\(count) " + String(localized: "premium.moreImagesAvailableSuffix", defaultValue: "more images available with Premium")
+        }
+        
+        // Errors
+        static let errorLoadingProducts = String(localized: "premium.errorLoadingProducts", defaultValue: "Could not load products.")
+        static let retryLoading = String(localized: "premium.retryLoading", defaultValue: "Retry")
+        static let purchasePending = String(localized: "premium.purchasePending", defaultValue: "Purchase is being reviewed...")
+        static let purchaseFailed = String(localized: "premium.purchaseFailed", defaultValue: "Purchase failed")
+        static let restoreFailed = String(localized: "premium.restoreFailed", defaultValue: "Restore failed.")
+        static let verificationFailed = String(localized: "premium.verificationFailed", defaultValue: "Transaction could not be verified.")
+        
+        // Settings
+        static let settingsTitle = String(localized: "premium.settingsTitle", defaultValue: "PREMIUM")
+        static let settingsSubtitle = String(localized: "premium.settingsSubtitle", defaultValue: "Subscription & Features")
+        
+        // Premium Theme
+        static let premiumTheme = String(localized: "premium.theme", defaultValue: "Premium Theme")
+        static let premiumThemeSubtitle = String(localized: "premium.themeSubtitle", defaultValue: "Warmes, angenehmes Farbschema")
+        static let upgradeToPremium = String(localized: "premium.upgradeToPremium", defaultValue: "Upgrade to Premium")
+        static let upgradeToPremiumSubtitle = String(localized: "premium.upgradeToPremiumSubtitle", defaultValue: "Unlock all features")
+        static let tryItFree = String(localized: "premium.tryItFree", defaultValue: "Try It Free")
+        static let annualPlan = String(localized: "premium.annualPlan", defaultValue: "Annual Plan")
+        
+        // Subscription Type
+        static let subscriptionMonthly = String(localized: "premium.subscriptionMonthly", defaultValue: "Monthly Subscription")
+        static let subscriptionYearly = String(localized: "premium.subscriptionYearly", defaultValue: "Yearly Subscription")
+        static let monthlyShort = String(localized: "premium.monthlyShort", defaultValue: "Monthly")
+        static let yearlyShort = String(localized: "premium.yearlyShort", defaultValue: "Yearly")
+        static let renewsOn = String(localized: "premium.renewsOn", defaultValue: "Renews on")
+        static let currentPlan = String(localized: "premium.currentPlan", defaultValue: "Current Plan")
+        static let changePlan = String(localized: "premium.changePlan", defaultValue: "Change Plan")
+        static let changePlanSubtitle = String(localized: "premium.changePlanSubtitle", defaultValue: "Switch between monthly and yearly")
+        static let cancelSubscription = String(localized: "premium.cancelSubscription", defaultValue: "Cancel Subscription")
+        static let cancelSubscriptionSubtitle = String(localized: "premium.cancelSubscriptionSubtitle", defaultValue: "Manage in App Store settings")
+        static let activeUntil = String(localized: "premium.activeUntil", defaultValue: "Active until")
+        static let monthlyPlan = String(localized: "premium.monthlyPlan", defaultValue: "Monthly Plan")
+        static let bestValue = String(localized: "premium.bestValue", defaultValue: "Best Value")
+        static let everythingIncluded = String(localized: "premium.everythingIncluded", defaultValue: "Everything included in Premium")
+        
+        // Manage View
+        static let yourSubscription = String(localized: "premium.yourSubscription", defaultValue: "Your Subscription")
+        static let subscriptionDetails = String(localized: "premium.subscriptionDetails", defaultValue: "SUBSCRIPTION DETAILS")
+        static let plan = String(localized: "premium.plan", defaultValue: "Plan")
+        static let status = String(localized: "premium.status", defaultValue: "Status")
+        static let price = String(localized: "premium.price", defaultValue: "Price")
+        static let nextRenewal = String(localized: "premium.nextRenewal", defaultValue: "Next Renewal")
+        static let includedFeatures = String(localized: "premium.includedFeatures", defaultValue: "INCLUDED FEATURES")
+        static let cursorModeFeature = String(localized: "premium.cursorModeFeature", defaultValue: "Cursor Mode")
+        static let cursorModeFeatureDesc = String(localized: "premium.cursorModeFeatureDesc", defaultValue: "Navigate freely on any website with a virtual cursor. Click links, buttons, and interact with forms.")
+        static let unlimitedImageSearch = String(localized: "premium.unlimitedImageSearch", defaultValue: "Unlimited Image Search")
+        static let unlimitedImageSearchDesc = String(localized: "premium.unlimitedImageSearchDesc", defaultValue: "Search for images without daily limits. View all results in full screen quality.")
+        static let allFutureUpdates = String(localized: "premium.allFutureUpdates", defaultValue: "All Future Updates")
+        static let allFutureUpdatesDesc = String(localized: "premium.allFutureUpdatesDesc", defaultValue: "Get access to all new premium features as they are released.")
+        static let manageInAppStore = String(localized: "premium.manageInAppStore", defaultValue: "Manage in App Store")
+        static let manageInAppStoreSubtitle = String(localized: "premium.manageInAppStoreSubtitle", defaultValue: "Change plan or cancel via Apple TV Settings")
+        static let thankYou = String(localized: "premium.thankYou", defaultValue: "Thank you for your support!")
+        static let thankYouSubtitle = String(localized: "premium.thankYouSubtitle", defaultValue: "You have full access to all premium features.")
+    }
+    
     // MARK: - URL Input
     enum URLInput {
         static let openWebsite = String(localized: "urlInput.openWebsite", defaultValue: "Open website")

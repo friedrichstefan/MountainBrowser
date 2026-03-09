@@ -10,47 +10,97 @@ import SwiftUI
 // MARK: - TVOSDesign System
 struct TVOSDesign {
     
+    // MARK: - Theme Detection Helper
+    private static var isPremiumTheme: Bool {
+        UserDefaults.standard.bool(forKey: "browser.usePremiumTheme")
+    }
+    
     // MARK: - Colors
     struct Colors {
-        static let background = Color(red: 0.06, green: 0.06, blue: 0.08)
-        static let secondaryBackground = Color(red: 0.10, green: 0.10, blue: 0.12)
-        static let tertiaryBackground = Color(red: 0.14, green: 0.14, blue: 0.16)
+        
+        // --- Dynamische Hintergrund-Farben (reagieren auf Premium Theme) ---
+        static var background: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.10, green: 0.07, blue: 0.03)    // Warmes Dunkelbraun
+                : Color(red: 0.06, green: 0.06, blue: 0.08)     // Kühles Schwarz (Standard)
+        }
+        static var secondaryBackground: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.14, green: 0.10, blue: 0.05)
+                : Color(red: 0.10, green: 0.10, blue: 0.12)
+        }
+        static var tertiaryBackground: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.18, green: 0.14, blue: 0.08)
+                : Color(red: 0.14, green: 0.14, blue: 0.16)
+        }
         
         static let cardBackground = Color.white.opacity(0.03)
         static let cardBackgroundHover = Color.white.opacity(0.08)
         static let focusedCardBackground = Color.white.opacity(0.18)
         static let pressedCardBackground = Color.white.opacity(0.06)
         
-        static let primaryLabel = Color.white
-        static let primaryText = Color.white
-        static let secondaryLabel = Color(white: 0.7)
-        static let secondaryText = Color(white: 0.7)
-        static let tertiaryLabel = Color(white: 0.45)
+        // --- Dynamische Label-Farben ---
+        static var primaryLabel: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 1.0, green: 0.97, blue: 0.92)      // Warmes Weiß
+                : Color.white
+        }
+        static var primaryText: Color { primaryLabel }
+        static var secondaryLabel: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.78, green: 0.72, blue: 0.62)     // Warmes Grau
+                : Color(white: 0.7)
+        }
+        static var secondaryText: Color { secondaryLabel }
+        static var tertiaryLabel: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.52, green: 0.46, blue: 0.38)     // Warmes Dunkelgrau
+                : Color(white: 0.45)
+        }
         
-        static let accent = Color(red: 0.25, green: 0.52, blue: 1.0)
-        static let accentBlue = Color(red: 0.25, green: 0.52, blue: 1.0)
+        // --- Dynamische Akzentfarben ---
+        static var accent: Color { accentBlue }
+        static var accentBlue: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.95, green: 0.75, blue: 0.28)     // Warmes Gold/Amber
+                : Color(red: 0.25, green: 0.52, blue: 1.0)      // Kühles Blau
+        }
         static let accentOrange = Color.orange
         
-        static let systemBlue = Color(red: 0.25, green: 0.52, blue: 1.0)
+        // --- Dynamische System-Farben ---
+        static var systemBlue: Color { accentBlue }
         static let systemGreen = Color(red: 0.2, green: 0.78, blue: 0.35)
         static let systemRed = Color(red: 1.0, green: 0.27, blue: 0.23)
         static let systemOrange = Color(red: 1.0, green: 0.62, blue: 0.04)
         static let systemYellow = Color(red: 1.0, green: 0.84, blue: 0.04)
-        static let systemPurple = Color(red: 0.69, green: 0.32, blue: 0.87)
+        static var systemPurple: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.82, green: 0.48, blue: 0.35)     // Warmes Terracotta
+                : Color(red: 0.69, green: 0.32, blue: 0.87)
+        }
         static let systemPink = Color(red: 1.0, green: 0.22, blue: 0.37)
-        static let systemTeal = Color(red: 0.35, green: 0.78, blue: 0.85)
-        static let systemIndigo = Color(red: 0.35, green: 0.34, blue: 0.84)
+        static var systemTeal: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.72, green: 0.62, blue: 0.45)     // Warmes Sand
+                : Color(red: 0.35, green: 0.78, blue: 0.85)
+        }
+        static var systemIndigo: Color {
+            TVOSDesign.isPremiumTheme
+                ? Color(red: 0.65, green: 0.42, blue: 0.28)     // Warmes Kupfer
+                : Color(red: 0.35, green: 0.34, blue: 0.84)
+        }
         
         static let success = Color(red: 0.2, green: 0.78, blue: 0.35)
         static let error = Color(red: 1.0, green: 0.27, blue: 0.23)
         static let warning = Color(red: 1.0, green: 0.62, blue: 0.04)
         
         static let separator = Color.white.opacity(0.06)
-        static let focusHighlight = Color(red: 0.25, green: 0.52, blue: 1.0).opacity(0.35)
-        static let focusGlow = Color(red: 0.25, green: 0.52, blue: 1.0).opacity(0.45)
+        static var focusHighlight: Color { accentBlue.opacity(0.35) }
+        static var focusGlow: Color { accentBlue.opacity(0.45) }
         static let focusBorder = Color.white.opacity(0.6)
         static let cardGlow = Color.white.opacity(0.25)
-        static let navbarBackground = Color(red: 0.06, green: 0.06, blue: 0.08)
+        static var navbarBackground: Color { background }
         
         // Glasmorphe Karten-Farben
         static let glassBackground = Color.white.opacity(0.03)

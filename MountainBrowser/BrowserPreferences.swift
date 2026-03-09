@@ -55,7 +55,7 @@ enum WikipediaLanguage: String, Codable, CaseIterable {
 /// Browser-Ansichtsmodus
 enum BrowserViewMode: String, Codable, CaseIterable {
     case scrollView = "scroll"    // Standard Fokus-basierte Navigation
-    case cursorView = "cursor"    // Maus-Cursor basierte Navigation
+    case cursorView = "cursor"    // Maus-Cursor basierte Navigation (Premium)
     
     var displayName: String {
         switch self {
@@ -74,6 +74,14 @@ enum BrowserViewMode: String, Codable, CaseIterable {
             return L10n.ViewMode.cursorViewDesc
         }
     }
+    
+    /// Prüft ob dieser Modus Premium erfordert
+    var requiresPremium: Bool {
+        switch self {
+        case .scrollView: return false
+        case .cursorView: return true
+        }
+    }
 }
 
 /// Browser-Einstellungen und Präferenzen
@@ -90,6 +98,7 @@ struct BrowserPreferences {
     var defaultZoom: Float
     var viewMode: BrowserViewMode
     var wikipediaLanguage: WikipediaLanguage
+    var usePremiumTheme: Bool
     
     init(
         homepage: String = "https://www.google.com",
@@ -102,7 +111,8 @@ struct BrowserPreferences {
         showTopNavigation: Bool = true,
         defaultZoom: Float = 1.0,
         viewMode: BrowserViewMode = .scrollView,
-        wikipediaLanguage: WikipediaLanguage = .system
+        wikipediaLanguage: WikipediaLanguage = .system,
+        usePremiumTheme: Bool = false
     ) {
         self.homepage = homepage
         self.searchEngine = searchEngine
@@ -115,6 +125,7 @@ struct BrowserPreferences {
         self.defaultZoom = defaultZoom
         self.viewMode = viewMode
         self.wikipediaLanguage = wikipediaLanguage
+        self.usePremiumTheme = usePremiumTheme
     }
 }
 
@@ -164,10 +175,23 @@ final class SessionManager: ObservableObject {
         static let defaultZoom = "browser.defaultZoom"
         static let viewMode = "browser.viewMode"
         static let wikipediaLanguage = "browser.wikipediaLanguage"
+        static let usePremiumTheme = "browser.usePremiumTheme"
     }
     
     init() {
         // Lade Preferences aus UserDefaults
+        let loadedViewMode = BrowserViewMode(rawValue: UserDefaults.standard.string(forKey: Keys.viewMode) ?? "scroll") ?? .scrollView
+        
+        // Premium-Schutz: Falls cursorView gespeichert ist aber kein Premium, auf scrollView zurücksetzen
+        let safeViewMode: BrowserViewMode
+        if loadedViewMode == .cursorView && !PremiumManager.shared.canUseCursorMode {
+            safeViewMode = .scrollView
+            // Korrigierten Wert sofort zurückspeichern
+            UserDefaults.standard.set(BrowserViewMode.scrollView.rawValue, forKey: Keys.viewMode)
+        } else {
+            safeViewMode = loadedViewMode
+        }
+        
         self.preferences = BrowserPreferences(
             homepage: UserDefaults.standard.string(forKey: Keys.homepage) ?? "https://www.google.com",
             searchEngine: UserDefaults.standard.string(forKey: Keys.searchEngine) ?? "Google",
@@ -178,8 +202,9 @@ final class SessionManager: ObservableObject {
             blockPopups: UserDefaults.standard.object(forKey: Keys.blockPopups) as? Bool ?? true,
             showTopNavigation: UserDefaults.standard.object(forKey: Keys.showTopNavigation) as? Bool ?? true,
             defaultZoom: UserDefaults.standard.object(forKey: Keys.defaultZoom) as? Float ?? 1.0,
-            viewMode: BrowserViewMode(rawValue: UserDefaults.standard.string(forKey: Keys.viewMode) ?? "scroll") ?? .scrollView,
-            wikipediaLanguage: WikipediaLanguage(rawValue: UserDefaults.standard.string(forKey: Keys.wikipediaLanguage) ?? "system") ?? .system
+            viewMode: safeViewMode,
+            wikipediaLanguage: WikipediaLanguage(rawValue: UserDefaults.standard.string(forKey: Keys.wikipediaLanguage) ?? "system") ?? .system,
+            usePremiumTheme: UserDefaults.standard.object(forKey: Keys.usePremiumTheme) as? Bool ?? false
         )
     }
     
@@ -196,6 +221,7 @@ final class SessionManager: ObservableObject {
         UserDefaults.standard.set(preferences.defaultZoom, forKey: Keys.defaultZoom)
         UserDefaults.standard.set(preferences.viewMode.rawValue, forKey: Keys.viewMode)
         UserDefaults.standard.set(preferences.wikipediaLanguage.rawValue, forKey: Keys.wikipediaLanguage)
+        UserDefaults.standard.set(preferences.usePremiumTheme, forKey: Keys.usePremiumTheme)
     }
     
     /// Erstellt neue Session

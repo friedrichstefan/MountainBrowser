@@ -15,6 +15,7 @@ struct FullscreenWebViewWithSession: View {
     @Binding var isPresented: Bool
     
     @State private var currentURL: URL?
+    @State private var showPaywall: Bool = false
     
     var body: some View {
         Group {
@@ -25,39 +26,86 @@ struct FullscreenWebViewWithSession: View {
                     preferences: sessionManager.preferences,
                     onNavigationAction: { _ in true },
                     onBack: { isPresented = false },
-                    onPlayPause: { toggleViewMode() }
+                    onPlayPause: { attemptToggleViewMode() }
                 )
                 
             case .cursorView:
-                CursorModeWebView(
-                    url: $currentURL,
-                    preferences: sessionManager.preferences,
-                    onNavigationAction: { _ in true },
-                    onBack: { isPresented = false },
-                    onPlayPause: { toggleViewMode() },
-                    onShowSettings: { }
-                )
+                // Doppelte Absicherung: Falls der Modus irgendwie ohne Premium gesetzt wurde,
+                // sofort zurück zum Scroll-Modus wechseln
+                if PremiumManager.shared.canUseCursorMode {
+                    CursorModeWebView(
+                        url: $currentURL,
+                        preferences: sessionManager.preferences,
+                        onNavigationAction: { _ in true },
+                        onBack: { isPresented = false },
+                        onPlayPause: { attemptToggleViewMode() },
+                        onShowSettings: { attemptToggleViewMode() }
+                    )
+                } else {
+                    ScrollModeWebView(
+                        url: $currentURL,
+                        preferences: sessionManager.preferences,
+                        onNavigationAction: { _ in true },
+                        onBack: { isPresented = false },
+                        onPlayPause: { attemptToggleViewMode() }
+                    )
+                    .onAppear {
+                        // Korrigiere den ungültigen Zustand
+                        sessionManager.preferences.viewMode = .scrollView
+                        sessionManager.savePreferences()
+                    }
+                }
             }
         }
         .onAppear {
             currentURL = URL(string: url)
             sessionManager.createSession(url: url)
+            
+            // Beim Erscheinen prüfen: Falls cursorView gesetzt ist aber kein Premium, zurücksetzen
+            if sessionManager.preferences.viewMode == .cursorView && !PremiumManager.shared.canUseCursorMode {
+                sessionManager.preferences.viewMode = .scrollView
+                sessionManager.savePreferences()
+            }
         }
         .onDisappear {
             sessionManager.updateSession(url: url, scrollPosition: 0)
         }
         .ignoresSafeArea(.all)
+        .overlay {
+            if showPaywall {
+                PremiumPaywallView(
+                    feature: .cursorMode,
+                    isPresented: $showPaywall
+                )
+                .transition(.opacity)
+                .zIndex(10)
+            }
+        }
     }
     
-    // MARK: - ViewMode Toggle
+    // MARK: - ViewMode Toggle mit Premium-Prüfung
     
-    private func toggleViewMode() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            switch sessionManager.preferences.viewMode {
-            case .scrollView:
-                sessionManager.preferences.viewMode = .cursorView
-            case .cursorView:
+    private func attemptToggleViewMode() {
+        let premiumManager = PremiumManager.shared
+        
+        switch sessionManager.preferences.viewMode {
+        case .scrollView:
+            // Wechsel zu Cursor: Premium erforderlich
+            if premiumManager.canUseCursorMode {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    sessionManager.preferences.viewMode = .cursorView
+                    sessionManager.savePreferences()
+                }
+            } else {
+                // Paywall anzeigen
+                showPaywall = true
+            }
+            
+        case .cursorView:
+            // Wechsel zurück zu Scroll: Immer erlaubt
+            withAnimation(.easeInOut(duration: 0.3)) {
                 sessionManager.preferences.viewMode = .scrollView
+                sessionManager.savePreferences()
             }
         }
     }

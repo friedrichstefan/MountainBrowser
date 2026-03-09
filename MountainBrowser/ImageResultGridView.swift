@@ -12,9 +12,26 @@ struct ImageResultGridView: View {
     let results: [SearchResult]
     let onSelect: (SearchResult) -> Void
     
+    @State private var premiumManager = PremiumManager.shared
+    @State private var showPaywall: Bool = false
+    
     private let columns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 24)
     ]
+    
+    /// Sichtbare Ergebnisse: Alle für Premium, nur die ersten N für Free-User
+    private var visibleResults: [SearchResult] {
+        if premiumManager.canViewAllImages {
+            return results
+        } else {
+            return Array(results.prefix(premiumManager.freeImagePreviewLimit))
+        }
+    }
+    
+    /// Anzahl der versteckten Bilder
+    private var hiddenCount: Int {
+        max(0, results.count - premiumManager.freeImagePreviewLimit)
+    }
     
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -23,18 +40,38 @@ struct ImageResultGridView: View {
                     .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
                     .padding(.top, 100)
             } else {
-                LazyVGrid(columns: columns, spacing: 28) {
-                    ForEach(results) { result in
-                        ModernImageResultCard(result: result, onTap: {
-                            onSelect(result)
-                        })
+                VStack(spacing: TVOSDesign.Spacing.cardSpacing) {
+                    LazyVGrid(columns: columns, spacing: 28) {
+                        ForEach(visibleResults) { result in
+                            ModernImageResultCard(result: result, onTap: {
+                                onSelect(result)
+                            })
+                        }
+                    }
+                    .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
+                    
+                    // Premium-Banner wenn Free-User und weitere Bilder vorhanden
+                    if !premiumManager.canViewAllImages && hiddenCount > 0 {
+                        PremiumInlineBanner(
+                            feature: .imageSearch,
+                            message: L10n.Premium.moreImagesAvailable(hiddenCount),
+                            onUnlock: {
+                                showPaywall = true
+                            }
+                        )
+                        .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
                     }
                 }
-                .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
                 .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom + 100)
             }
         }
         .accessibilityLabel("Bildsuchergebnisse")
+        .fullScreenCover(isPresented: $showPaywall) {
+            PremiumPaywallView(
+                feature: .imageSearch,
+                isPresented: $showPaywall
+            )
+        }
     }
 }
 

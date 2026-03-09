@@ -1,0 +1,118 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "7AE92754",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "de",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "DEU",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "E8527A88",
+      "localizations" : [
+        {
+          "description" : "",
+          "displayName" : "test",
+          "locale" : "de"
+        }
+      ],
+      "name" : "MountainBrowser",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "0.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "C78C1908",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock cursor mode, unlimited image search and all premium features.",
+              "displayName" : "Monthly Premium",
+              "locale" : "en_US"
+            },
+            {
+              "description" : "Cursor-Modus, unbegrenzte Bildersuche und alle Premium-Funktionen freischalten.",
+              "displayName" : "Monatlich Premium",
+              "locale" : "de"
+            }
+          ],
+          "productID" : "com.mountainbrowser.premium.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Monthly Premium",
+          "subscriptionGroupID" : "E8527A88",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "11",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "C81FF5F9",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlock cursor mode, unlimited image search and all premium features. Save with annual billing!",
+              "displayName" : "Yearly Premium",
+              "locale" : "en_US"
+            },
+            {
+              "description" : "Cursor-Modus, unbegrenzte Bildersuche und alle Premium-Funktionen. Spare mit dem Jahresabo!",
+              "displayName" : "Jährlich Premium",
+              "locale" : "de"
+            }
+          ],
+          "productID" : "com.mountainbrowser.premium.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Yearly Premium",
+          "subscriptionGroupID" : "E8527A88",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

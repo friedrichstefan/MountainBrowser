@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3934A1B22F5EEC68003ABB57 /* Configuration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 3934A1B12F5EEC68003ABB57 /* Configuration.storekit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXBuildRule section */
 		39323C692F46007100652742 /* PBXBuildRule */ = {
 			isa = PBXBuildRule;
@@ -38,6 +42,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		3934A1B12F5EEC68003ABB57 /* Configuration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Configuration.storekit; sourceTree = "<group>"; };
 		39EC34792F3A03F400E89830 /* MountainBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MountainBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		39EC34882F3A03F800E89830 /* MountainBrowserTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MountainBrowserTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		39EC34922F3A03F800E89830 /* MountainBrowserUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MountainBrowserUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -102,6 +107,7 @@
 		39EC34702F3A03F400E89830 = {
 			isa = PBXGroup;
 			children = (
+				3934A1B12F5EEC68003ABB57 /* Configuration.storekit */,
 				39EC347B2F3A03F400E89830 /* MountainBrowser */,
 				39EC348B2F3A03F800E89830 /* MountainBrowserTests */,
 				39EC34952F3A03F800E89830 /* MountainBrowserUITests */,
@@ -204,7 +210,7 @@
 					"New-2",
 				);
 				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2620;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					39EC34782F3A03F400E89830 = {
 						CreatedOnToolsVersion = 26.2;
@@ -252,6 +258,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3934A1B22F5EEC68003ABB57 /* Configuration.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -314,6 +321,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -368,6 +376,7 @@
 				NEW_SETTING = "";
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				TVOS_DEPLOYMENT_TARGET = 17.0;
@@ -379,6 +388,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -426,6 +436,7 @@
 				MTL_FAST_MATH = YES;
 				NEW_SETTING = "";
 				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				TVOS_DEPLOYMENT_TARGET = 17.0;
 				VALIDATE_PRODUCT = YES;

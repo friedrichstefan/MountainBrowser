@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import StoreKit
 
 // TransparentButtonStyle is defined in TVOSDesign.swift — no need to redeclare here.
 
@@ -16,6 +17,9 @@ struct BrowserSettingsView: View {
     
     @State private var animateBackground: Bool = false
     @State private var showAbout: Bool = false
+    @State private var showPaywall: Bool = false
+    @State private var showManageView: Bool = false
+    @State private var premiumManager = PremiumManager.shared
     
     enum SettingsItem: Hashable {
         case backButton
@@ -25,6 +29,10 @@ struct BrowserSettingsView: View {
         case popups
         case navigation
         case wikipediaLanguage
+        case premiumStatus
+        case premiumUpgrade
+        case premiumRestore
+        case premiumTheme
         case reset
         case about
     }
@@ -40,6 +48,7 @@ struct BrowserSettingsView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 60) {
                     headerSection
+                    premiumSection
                     viewModeSection
                     webSettingsSection
                     wikipediaSettingsSection
@@ -61,6 +70,17 @@ struct BrowserSettingsView: View {
         }
         .fullScreenCover(isPresented: $showAbout) {
             AboutAppView()
+        }
+        .fullScreenCover(isPresented: $showPaywall) {
+            PremiumPaywallView(
+                feature: .general,
+                isPresented: $showPaywall
+            )
+        }
+        .fullScreenCover(isPresented: $showManageView) {
+            PremiumManageView(
+                isPresented: $showManageView
+            )
         }
     }
     
@@ -185,8 +205,14 @@ struct BrowserSettingsView: View {
                 let allCases = BrowserViewMode.allCases
                 if let currentIndex = allCases.firstIndex(of: currentMode) {
                     let nextIndex = (currentIndex + 1) % allCases.count
-                    sessionManager.preferences.viewMode = allCases[nextIndex]
-                    sessionManager.savePreferences()
+                    let nextMode = allCases[nextIndex]
+                    // Cursor-Mode benötigt Premium
+                    if nextMode == .cursorView && !premiumManager.isPremium {
+                        showPaywall = true
+                    } else {
+                        sessionManager.preferences.viewMode = nextMode
+                        sessionManager.savePreferences()
+                    }
                 }
             }
         }) {
@@ -411,6 +437,374 @@ struct BrowserSettingsView: View {
         )
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
         .animation(TVOSDesign.Animation.focusSpring, value: currentLanguage)
+    }
+    
+    // MARK: - Premium Section
+    
+    private var premiumSection: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            sectionLabel(title: L10n.Premium.settingsTitle, icon: "crown.fill")
+            
+            // Status-Anzeige
+            premiumStatusRow
+            
+            // Premium Theme Toggle (nur für Premium-Nutzer)
+            if premiumManager.isPremium {
+                premiumThemeToggle
+            }
+            
+            // Upgrade oder Verwalten Button
+            if premiumManager.isPremium {
+                premiumManageRow
+            } else {
+                premiumUpgradeRow
+            }
+            
+            // Restore Button
+            premiumRestoreRow
+        }
+    }
+    
+    private var premiumThemeToggle: some View {
+        let isFocused = focusedItem == .premiumTheme
+        let isOn = sessionManager.preferences.usePremiumTheme
+        
+        return Button(action: {
+            withAnimation(TVOSDesign.Animation.focusSpring) {
+                sessionManager.preferences.usePremiumTheme.toggle()
+                sessionManager.savePreferences()
+            }
+        }) {
+            HStack(spacing: 20) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [TVOSDesign.Colors.systemYellow.opacity(isFocused ? 0.45 : 0.25), TVOSDesign.Colors.systemOrange.opacity(isFocused ? 0.2 : 0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 52, height: 52)
+                    
+                    Image(systemName: "paintpalette.fill")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.systemYellow : TVOSDesign.Colors.systemYellow.opacity(0.8))
+                }
+                
+                // Text
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.Premium.premiumTheme)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.primaryLabel)
+                    
+                    Text(L10n.Premium.premiumThemeSubtitle)
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.secondaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                }
+                
+                Spacer()
+                
+                // Toggle
+                ZStack(alignment: isOn ? .trailing : .leading) {
+                    Capsule()
+                        .fill(
+                            isOn
+                                ? LinearGradient(
+                                    colors: [TVOSDesign.Colors.systemYellow, TVOSDesign.Colors.systemOrange.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                : LinearGradient(
+                                    colors: [Color.white.opacity(0.12), Color.white.opacity(0.08)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                        )
+                        .frame(width: 62, height: 36)
+                    
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 28, height: 28)
+                        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+                        .padding(.horizontal, 4)
+                }
+                .animation(TVOSDesign.Animation.focusSpring, value: isOn)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(
+                        isFocused ? TVOSDesign.Colors.systemYellow.opacity(0.7) : Color.white.opacity(0.05),
+                        lineWidth: isFocused ? 2.0 : 1
+                    )
+            )
+        }
+        .buttonStyle(TransparentButtonStyle())
+        .focused($focusedItem, equals: .premiumTheme)
+        .scaleEffect(isFocused ? 1.02 : 1.0)
+        .shadow(
+            color: isFocused ? TVOSDesign.Colors.systemYellow.opacity(0.25) : Color.clear,
+            radius: isFocused ? 24 : 0,
+            y: isFocused ? 10 : 0
+        )
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+        .animation(TVOSDesign.Animation.focusSpring, value: isOn)
+    }
+    
+    private var premiumStatusRow: some View {
+        HStack(spacing: 20) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(
+                        LinearGradient(
+                            colors: premiumManager.isPremium
+                                ? [TVOSDesign.Colors.systemYellow.opacity(0.35), TVOSDesign.Colors.systemOrange.opacity(0.15)]
+                                : [Color.white.opacity(0.12), Color.white.opacity(0.06)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 52, height: 52)
+                
+                Image(systemName: premiumManager.subscriptionStatusIcon)
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(premiumManager.subscriptionStatusColor)
+            }
+            
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(premiumManager.subscriptionStatusText)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(TVOSDesign.Colors.primaryLabel)
+                    
+                    if premiumManager.isPremium {
+                        PremiumBadge(small: true)
+                    }
+                }
+                
+                Text(premiumManager.subscriptionDetailText)
+                    .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
+                    .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
+            }
+            
+            Spacer()
+            
+            // Abo-Typ Badge rechts
+            if premiumManager.isPremium {
+                Text(premiumManager.activeSubscriptionType.shortName)
+                    .font(.system(size: TVOSDesign.Typography.caption, weight: .bold))
+                    .foregroundColor(TVOSDesign.Colors.systemYellow)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(TVOSDesign.Colors.systemYellow.opacity(0.15))
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(TVOSDesign.Colors.systemYellow.opacity(0.3), lineWidth: 1)
+                    )
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 22)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(premiumManager.isPremium ? TVOSDesign.Colors.systemYellow.opacity(0.04) : Color.white.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(
+                    premiumManager.isPremium ? TVOSDesign.Colors.systemYellow.opacity(0.15) : Color.white.opacity(0.05),
+                    lineWidth: 1
+                )
+        )
+    }
+    
+    private var premiumUpgradeRow: some View {
+        let isFocused = focusedItem == .premiumUpgrade
+        
+        return Button(action: {
+            showPaywall = true
+        }) {
+            HStack(spacing: 20) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [TVOSDesign.Colors.systemYellow.opacity(isFocused ? 0.5 : 0.3), TVOSDesign.Colors.systemOrange.opacity(isFocused ? 0.25 : 0.12)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 52, height: 52)
+                    
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(TVOSDesign.Colors.systemYellow)
+                }
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.Premium.upgradeToPremium)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.primaryLabel)
+                    
+                    Text(L10n.Premium.upgradeToPremiumSubtitle)
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.secondaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(isFocused ? TVOSDesign.Colors.systemYellow : TVOSDesign.Colors.tertiaryLabel)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(
+                        isFocused ? TVOSDesign.Colors.systemYellow.opacity(0.7) : Color.white.opacity(0.05),
+                        lineWidth: isFocused ? 2.0 : 1
+                    )
+            )
+        }
+        .buttonStyle(TransparentButtonStyle())
+        .focused($focusedItem, equals: .premiumUpgrade)
+        .scaleEffect(isFocused ? 1.02 : 1.0)
+        .shadow(
+            color: isFocused ? TVOSDesign.Colors.systemYellow.opacity(0.25) : Color.clear,
+            radius: isFocused ? 24 : 0,
+            y: isFocused ? 10 : 0
+        )
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+    }
+    
+    private var premiumManageRow: some View {
+        let isFocused = focusedItem == .premiumUpgrade
+        let subType = premiumManager.activeSubscriptionType
+        
+        // Detaillierten Subtitle erstellen
+        let manageSubtitle: String = {
+            if let expDate = premiumManager.subscriptionExpirationDate {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .none
+                return "\(subType.displayName) · \(L10n.Premium.renewsOn) \(formatter.string(from: expDate))"
+            }
+            return "\(L10n.Premium.currentPlan): \(subType.displayName)"
+        }()
+        
+        return Button(action: {
+            showManageView = true
+        }) {
+            HStack(spacing: 20) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [TVOSDesign.Colors.systemYellow.opacity(isFocused ? 0.5 : 0.3), TVOSDesign.Colors.systemOrange.opacity(isFocused ? 0.25 : 0.12)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 52, height: 52)
+                    
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.systemYellow : TVOSDesign.Colors.systemYellow.opacity(0.8))
+                }
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.Premium.manageSubscription)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.primaryLabel)
+                    
+                    Text(manageSubtitle)
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.secondaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                }
+                
+                Spacer()
+                
+                // Abo-Typ rechts anzeigen
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(subType.shortName)
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .bold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.systemYellow)
+                    
+                    if let product = subType == .monthly ? premiumManager.monthlyProduct : premiumManager.yearlyProduct {
+                        Text(product.displayPrice)
+                            .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
+                            .foregroundColor(isFocused ? TVOSDesign.Colors.secondaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                    }
+                }
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(isFocused ? .white : TVOSDesign.Colors.tertiaryLabel)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(
+                        isFocused ? TVOSDesign.Colors.systemYellow.opacity(0.7) : Color.white.opacity(0.05),
+                        lineWidth: isFocused ? 2.0 : 1
+                    )
+            )
+        }
+        .buttonStyle(TransparentButtonStyle())
+        .focused($focusedItem, equals: .premiumUpgrade)
+        .scaleEffect(isFocused ? 1.02 : 1.0)
+        .shadow(
+            color: isFocused ? TVOSDesign.Colors.systemYellow.opacity(0.25) : Color.clear,
+            radius: isFocused ? 24 : 0,
+            y: isFocused ? 10 : 0
+        )
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+    }
+    
+    private var premiumRestoreRow: some View {
+        let isFocused = focusedItem == .premiumRestore
+        
+        return Button(action: {
+            Task { await premiumManager.restorePurchases() }
+        }) {
+            SettingsActionRowContent(
+                title: L10n.Premium.restorePurchases,
+                subtitle: premiumManager.isPurchasing ? L10n.General.loading : "",
+                icon: "arrow.clockwise",
+                iconColor: TVOSDesign.Colors.accentBlue,
+                isFocused: isFocused,
+                showChevron: false
+            )
+        }
+        .buttonStyle(TransparentButtonStyle())
+        .focused($focusedItem, equals: .premiumRestore)
+        .scaleEffect(isFocused ? 1.02 : 1.0)
+        .shadow(
+            color: isFocused ? TVOSDesign.Colors.accentBlue.opacity(0.25) : Color.clear,
+            radius: isFocused ? 24 : 0,
+            y: isFocused ? 10 : 0
+        )
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
     }
     
     // MARK: - Row Position
