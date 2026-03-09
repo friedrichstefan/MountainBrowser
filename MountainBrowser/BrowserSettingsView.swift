@@ -19,7 +19,6 @@ struct BrowserSettingsView: View {
     
     enum SettingsItem: Hashable {
         case backButton
-        case viewMode(BrowserViewMode)
         case javaScript
         case cookies
         case popups
@@ -39,7 +38,6 @@ struct BrowserSettingsView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 60) {
                     headerSection
-                    viewModeSection
                     webSettingsSection
                     footerSection
                     Spacer(minLength: TVOSDesign.Spacing.safeAreaBottom + 80)
@@ -161,31 +159,6 @@ struct BrowserSettingsView: View {
             Text("Browser konfigurieren")
                 .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
-        }
-    }
-    
-    // MARK: - View Mode Section
-    
-    private var viewModeSection: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            sectionLabel(title: "ANSICHTSMODUS", icon: "rectangle.split.3x1")
-            
-            HStack(spacing: 24) {
-                ForEach(BrowserViewMode.allCases, id: \.self) { mode in
-                    SettingsViewModeCard(
-                        mode: mode,
-                        isSelected: sessionManager.preferences.viewMode == mode,
-                        isFocused: focusedItem == .viewMode(mode),
-                        onSelect: {
-                            withAnimation(TVOSDesign.Animation.focusSpring) {
-                                sessionManager.preferences.viewMode = mode
-                                sessionManager.savePreferences()
-                            }
-                        }
-                    )
-                    .focused($focusedItem, equals: .viewMode(mode))
-                }
-            }
         }
     }
     
@@ -553,55 +526,55 @@ private struct AboutAppView: View {
                 spacing: 20
             ) {
                 AboutFeatureCard(
-                    icon: "cursorarrow.click.2",
-                    title: "Cursor-Modus",
-                    description: "Navigiere wie mit einer Maus durch Webseiten",
+                    icon: "doc.text.fill",
+                    title: "Reader-Modus",
+                    description: "Webseiten als lesbaren Text nativ darstellen",
                     color: TVOSDesign.Colors.accentBlue,
                     isFocused: focusedItem == .featureCard(0)
                 )
                 .focused($focusedItem, equals: .featureCard(0))
                 
                 AboutFeatureCard(
-                    icon: "scroll",
-                    title: "Scroll-Modus",
-                    description: "Natives tvOS Scrolling mit der Siri Remote",
-                    color: TVOSDesign.Colors.systemTeal,
-                    isFocused: focusedItem == .featureCard(1)
-                )
-                .focused($focusedItem, equals: .featureCard(1))
-                
-                AboutFeatureCard(
                     icon: "magnifyingglass",
                     title: "Web-Suche",
                     description: "Suche im Internet mit integrierten Ergebnissen",
                     color: TVOSDesign.Colors.systemGreen,
-                    isFocused: focusedItem == .featureCard(2)
+                    isFocused: focusedItem == .featureCard(1)
                 )
-                .focused($focusedItem, equals: .featureCard(2))
+                .focused($focusedItem, equals: .featureCard(1))
                 
                 AboutFeatureCard(
                     icon: "book.closed.fill",
                     title: "Wikipedia",
                     description: "Integrierte Wikipedia-Infos zu deiner Suche",
                     color: TVOSDesign.Colors.systemIndigo,
-                    isFocused: focusedItem == .featureCard(3)
+                    isFocused: focusedItem == .featureCard(2)
                 )
-                .focused($focusedItem, equals: .featureCard(3))
+                .focused($focusedItem, equals: .featureCard(2))
                 
                 AboutFeatureCard(
                     icon: "rectangle.stack",
                     title: "Tab-Verwaltung",
                     description: "Mehrere Tabs gleichzeitig öffnen und verwalten",
                     color: TVOSDesign.Colors.systemOrange,
-                    isFocused: focusedItem == .featureCard(4)
+                    isFocused: focusedItem == .featureCard(3)
                 )
-                .focused($focusedItem, equals: .featureCard(4))
+                .focused($focusedItem, equals: .featureCard(3))
                 
                 AboutFeatureCard(
                     icon: "photo.on.rectangle",
                     title: "Bilder & Videos",
                     description: "Bild- und Video-Ergebnisse in eigenen Tabs",
                     color: TVOSDesign.Colors.systemPink,
+                    isFocused: focusedItem == .featureCard(4)
+                )
+                .focused($focusedItem, equals: .featureCard(4))
+                
+                AboutFeatureCard(
+                    icon: "link",
+                    title: "Link-Navigation",
+                    description: "Navigiere über Links direkt in der Reader-Ansicht",
+                    color: TVOSDesign.Colors.systemTeal,
                     isFocused: focusedItem == .featureCard(5)
                 )
                 .focused($focusedItem, equals: .featureCard(5))
@@ -619,7 +592,7 @@ private struct AboutAppView: View {
                 aboutInfoRow(label: "Plattform", value: "tvOS", icon: "tv")
                 aboutInfoRow(label: "Framework", value: "SwiftUI", icon: "swift")
                 aboutInfoRow(label: "Minimum tvOS", value: "17.0", icon: "gearshape.2")
-                aboutInfoRow(label: "Rendering", value: "UIWebView", icon: "globe")
+                aboutInfoRow(label: "Rendering", value: "Native SwiftUI", icon: "doc.text")
                 aboutInfoRow(label: "Datenspeicherung", value: "SwiftData (lokal)", icon: "internaldrive")
                 aboutInfoRow(label: "Cloud-Sync", value: "Deaktiviert", icon: "icloud.slash")
             }
@@ -770,132 +743,6 @@ private struct AboutFeatureCard: View {
             y: isFocused ? 8 : 0
         )
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
-    }
-}
-
-// MARK: - View Mode Card (Extracted)
-
-private struct SettingsViewModeCard: View {
-    let mode: BrowserViewMode
-    let isSelected: Bool
-    let isFocused: Bool
-    let onSelect: () -> Void
-    
-    var body: some View {
-        Button(action: onSelect) {
-            VStack(spacing: 20) {
-                modeIcon
-                modeLabels
-                modeIndicator
-            }
-            .padding(28)
-            .frame(maxWidth: .infinity)
-            .background(cardBackground)
-            .overlay(cardBorder)
-        }
-        .buttonStyle(TransparentButtonStyle())
-        .scaleEffect(isFocused ? 1.04 : 1.0)
-        .shadow(
-            color: focusShadowColor,
-            radius: isFocused ? 24 : 0,
-            y: isFocused ? 10 : 0
-        )
-        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
-        .animation(TVOSDesign.Animation.focusSpring, value: isSelected)
-    }
-    
-    private var modeIcon: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 24)
-                .fill(iconGradient)
-                .frame(width: 100, height: 100)
-            
-            Image(systemName: iconName)
-                .font(.system(size: 44, weight: .light))
-                .foregroundColor(isSelected ? .white : TVOSDesign.Colors.secondaryLabel)
-        }
-    }
-    
-    private var modeLabels: some View {
-        VStack(spacing: 8) {
-            Text(mode.displayName)
-                .font(.system(size: TVOSDesign.Typography.headline, weight: .bold))
-                .foregroundColor(isFocused ? .white : TVOSDesign.Colors.primaryLabel)
-            
-            Text(mode.description)
-                .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
-                .foregroundColor(isFocused ? TVOSDesign.Colors.secondaryLabel : TVOSDesign.Colors.tertiaryLabel)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .frame(height: 40)
-        }
-    }
-    
-    private var modeIndicator: some View {
-        HStack(spacing: 8) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(isSelected ? TVOSDesign.Colors.systemGreen : Color.white.opacity(0.15))
-            
-            Text(isSelected ? "Aktiv" : "Wählen")
-                .font(.system(size: TVOSDesign.Typography.caption, weight: .semibold))
-                .foregroundColor(isSelected ? TVOSDesign.Colors.systemGreen : TVOSDesign.Colors.tertiaryLabel)
-        }
-    }
-    
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 24)
-            .fill(backgroundFill)
-    }
-    
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 24)
-            .strokeBorder(borderColor, lineWidth: borderWidth)
-    }
-    
-    private var iconName: String {
-        switch mode {
-        case .scrollView: return "scroll"
-        case .cursorView: return "cursorarrow.click.2"
-        }
-    }
-    
-    private var iconGradient: LinearGradient {
-        let colors: [Color] = isSelected
-            ? [TVOSDesign.Colors.accentBlue, TVOSDesign.Colors.systemIndigo]
-            : [Color.white.opacity(0.06), Color.white.opacity(0.02)]
-        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-    
-    private var backgroundFill: Color {
-        if isFocused && isSelected { return TVOSDesign.Colors.accentBlue.opacity(0.18) }
-        if isFocused { return Color.white.opacity(0.18) }
-        if isSelected { return TVOSDesign.Colors.accentBlue.opacity(0.06) }
-        return Color.white.opacity(0.03)
-    }
-    
-    private var borderColor: Color {
-        if isSelected && isFocused {
-            return TVOSDesign.Colors.accentBlue.opacity(0.9)
-        }
-        if isSelected {
-            return TVOSDesign.Colors.accentBlue.opacity(0.5)
-        }
-        if isFocused {
-            return TVOSDesign.Colors.accentBlue.opacity(0.7)
-        }
-        return Color.white.opacity(0.05)
-    }
-    
-    private var borderWidth: CGFloat {
-        if isSelected && isFocused { return 2.5 }
-        if isSelected || isFocused { return 2 }
-        return 1
-    }
-    
-    private var focusShadowColor: Color {
-        guard isFocused else { return Color.clear }
-        return isSelected ? TVOSDesign.Colors.accentBlue.opacity(0.4) : TVOSDesign.Colors.accentBlue.opacity(0.25)
     }
 }
 

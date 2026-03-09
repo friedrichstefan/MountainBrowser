@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  APIKeys.plist Template für MountainBrowser
+  
+  ANLEITUNG:
+  1. Kopiere diese Datei und benenne sie um zu "APIKeys.plist"
+  2. Ersetze die Platzhalter mit deinen echten API-Keys
+  3. Die Datei APIKeys.plist wird automatisch vom Git ignoriert
+  
+  API-Keys bekommst du hier:
+  - Google API Key: https://console.cloud.google.com/apis/credentials
+  - Search Engine ID: https://programmablesearchengine.google.com/
+-->
+<plist version="1.0">
+<dict>
+    <key>GOOGLE_API_KEY</key>
+    <string>YOUR_GOOGLE_API_KEY_HERE</string>
+    <key>GOOGLE_SEARCH_ENGINE_ID</key>
+    <string>YOUR_SEARCH_ENGINE_ID_HERE</string>
+    <key>YOUTUBE_API_KEY</key>
+    <string>YOUR_YOUTUBE_API_KEY_HERE</string>
+</dict>
+</plist>

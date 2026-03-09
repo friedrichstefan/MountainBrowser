@@ -12,20 +12,50 @@ struct APIConfiguration {
     
     // MARK: - Backend Configuration
     
-    /// Backend-Server URL
+    /// Backend-Server URL (Netlify Function)
+    /// Für Produktion: Ersetze mit deiner Netlify-URL, z.B. "https://your-site.netlify.app/.netlify/functions"
     static let backendBaseURL = "YOUR_BACKEND_URL"
     
-    // MARK: - Direct API Keys
-    // ⚠️ WARNUNG: Diese Keys NIEMALS in App Store Builds verwenden!
+    // MARK: - API Key Loading
+    
+    /// Lädt API-Schlüssel aus einer lokalen Konfigurationsdatei (für Entwicklung)
+    /// WICHTIG: Die Datei "APIKeys.plist" darf NICHT ins Git-Repository!
+    private static var cachedKeys: [String: String]?
+    
+    private static func loadAPIKeys() -> [String: String] {
+        if let cached = cachedKeys {
+            return cached
+        }
+        
+        // Versuche, Keys aus APIKeys.plist zu laden
+        if let path = Bundle.main.path(forResource: "APIKeys", ofType: "plist"),
+           let keys = NSDictionary(contentsOfFile: path) as? [String: String] {
+            cachedKeys = keys
+            return keys
+        }
+        
+        // Fallback: Leeres Dictionary
+        cachedKeys = [:]
+        return [:]
+    }
+    
+    // MARK: - API Keys (Loaded from secure storage)
     
     /// Google API Key für Custom Search und YouTube
-    static let googleAPIKey = "AIzaSyDHGL_dvbmPcRtGKJONSCVU7tlIaAikuNU"
+    /// Wird aus APIKeys.plist geladen (nicht im Git!)
+    static var googleAPIKey: String {
+        loadAPIKeys()["GOOGLE_API_KEY"] ?? ""
+    }
     
     /// Google Custom Search Engine ID
-    static let googleSearchEngineID = "2375272a6e1b04302"
+    static var googleSearchEngineID: String {
+        loadAPIKeys()["GOOGLE_SEARCH_ENGINE_ID"] ?? ""
+    }
     
-    /// YouTube API Key (gleicher Key wie googleAPIKey)
-    static let youtubeAPIKey = "AIzaSyDHGL_dvbmPcRtGKJONSCVU7tlIaAikuNU"
+    /// YouTube API Key (kann der gleiche Key wie googleAPIKey sein)
+    static var youtubeAPIKey: String {
+        loadAPIKeys()["YOUTUBE_API_KEY"] ?? googleAPIKey
+    }
     
     // MARK: - API Endpoints
     
@@ -35,6 +65,11 @@ struct APIConfiguration {
         
         /// YouTube Data API v3
         static let youtubeSearch = "https://www.googleapis.com/youtube/v3/search"
+        
+        /// Backend Search Endpoint (Netlify Function)
+        static var backendSearch: String {
+            "\(backendBaseURL)/search"
+        }
     }
     
     // MARK: - Configuration Validation
@@ -49,16 +84,32 @@ struct APIConfiguration {
     /// Überprüft, ob Google Custom Search API konfiguriert ist
     static var isGoogleSearchConfigured: Bool {
         return !googleAPIKey.isEmpty &&
-               !googleAPIKey.contains("YOUR_") &&
-               !googleSearchEngineID.isEmpty &&
-               !googleSearchEngineID.contains("YOUR_")
+               !googleSearchEngineID.isEmpty
     }
     
     /// Überprüft, ob YouTube API konfiguriert ist
     static var isYouTubeConfigured: Bool {
-        return !youtubeAPIKey.isEmpty &&
-               !youtubeAPIKey.contains("YOUR_")
+        return !youtubeAPIKey.isEmpty
     }
+    
+    /// Gibt an, ob irgendeine Such-API verfügbar ist
+    static var hasAnySearchCapability: Bool {
+        return isBackendConfigured || isGoogleSearchConfigured
+    }
+    
+    // MARK: - Debug Info
+    
+    /// Gibt Konfigurationsstatus aus (nur für Debug)
+    #if DEBUG
+    static func printConfigurationStatus() {
+        print("=== API Configuration Status ===")
+        print("Backend configured: \(isBackendConfigured)")
+        print("Google Search configured: \(isGoogleSearchConfigured)")
+        print("YouTube configured: \(isYouTubeConfigured)")
+        print("Has any search capability: \(hasAnySearchCapability)")
+        print("================================")
+    }
+    #endif
 }
 
 // MARK: - API Response Models
