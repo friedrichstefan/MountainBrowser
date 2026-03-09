@@ -2,8 +2,7 @@
 //  FullscreenWebView.swift
 //  MountainBrowser
 //
-//  TESTFLIGHT-KOMPATIBEL: Verwendet NativeReaderView statt UIWebView
-//  Rendert Webseiten als nativen, lesbaren SwiftUI-Content
+//  WebView mit ViewMode-Umschaltung: Scroll-Modus oder Cursor-Modus
 //
 
 import SwiftUI
@@ -12,17 +11,36 @@ import SwiftUI
 
 struct FullscreenWebViewWithSession: View {
     let url: String
-    let sessionManager: SessionManager
+    @ObservedObject var sessionManager: SessionManager
     @Binding var isPresented: Bool
     
+    @State private var currentURL: URL?
+    
     var body: some View {
-        NativeReaderView(
-            url: url,
-            title: extractDisplayTitle(from: url),
-            isPresented: $isPresented,
-            sessionManager: sessionManager
-        )
+        Group {
+            switch sessionManager.preferences.viewMode {
+            case .scrollView:
+                ScrollModeWebView(
+                    url: $currentURL,
+                    preferences: sessionManager.preferences,
+                    onNavigationAction: { _ in true },
+                    onBack: { isPresented = false },
+                    onPlayPause: { toggleViewMode() }
+                )
+                
+            case .cursorView:
+                CursorModeWebView(
+                    url: $currentURL,
+                    preferences: sessionManager.preferences,
+                    onNavigationAction: { _ in true },
+                    onBack: { isPresented = false },
+                    onPlayPause: { toggleViewMode() },
+                    onShowSettings: { }
+                )
+            }
+        }
         .onAppear {
+            currentURL = URL(string: url)
             sessionManager.createSession(url: url)
         }
         .onDisappear {
@@ -31,11 +49,17 @@ struct FullscreenWebViewWithSession: View {
         .ignoresSafeArea(.all)
     }
     
-    private func extractDisplayTitle(from urlString: String) -> String {
-        guard let urlObj = URL(string: urlString), let host = urlObj.host else { return urlString }
-        var h = host
-        if h.hasPrefix("www.") { h = String(h.dropFirst(4)) }
-        return h
+    // MARK: - ViewMode Toggle
+    
+    private func toggleViewMode() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            switch sessionManager.preferences.viewMode {
+            case .scrollView:
+                sessionManager.preferences.viewMode = .cursorView
+            case .cursorView:
+                sessionManager.preferences.viewMode = .scrollView
+            }
+        }
     }
 }
 
@@ -45,21 +69,19 @@ struct FullscreenWebView: View {
     let url: String
     @Binding var isPresented: Bool
     
-    var body: some View {
-        NativeReaderView(
-            url: url,
-            title: extractDisplayTitle(from: url),
-            isPresented: $isPresented,
-            sessionManager: SessionManager()
-        )
-        .ignoresSafeArea(.all)
-    }
+    @State private var currentURL: URL?
     
-    private func extractDisplayTitle(from urlString: String) -> String {
-        guard let urlObj = URL(string: urlString), let host = urlObj.host else { return urlString }
-        var h = host
-        if h.hasPrefix("www.") { h = String(h.dropFirst(4)) }
-        return h
+    var body: some View {
+        ScrollModeWebView(
+            url: $currentURL,
+            preferences: BrowserPreferences(),
+            onNavigationAction: { _ in true },
+            onBack: { isPresented = false }
+        )
+        .onAppear {
+            currentURL = URL(string: url)
+        }
+        .ignoresSafeArea(.all)
     }
 }
 

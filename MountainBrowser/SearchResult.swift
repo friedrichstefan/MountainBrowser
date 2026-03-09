@@ -14,10 +14,10 @@ enum SearchContentType: String, Codable, CaseIterable, Sendable {
     
     var displayName: String {
         switch self {
-        case .web: return "Alle"
-        case .image: return "Bilder"
-        case .video: return "Videos"
-        case .info: return "Info"
+        case .web: return L10n.Search.web
+        case .image: return L10n.Search.images
+        case .video: return L10n.Search.videos
+        case .info: return L10n.Search.info
         }
     }
     

@@ -75,7 +75,7 @@ struct EnhancedSearchBar: View {
                 .animation(TVOSDesign.Animation.focusSpring, value: isSearchFieldFocused)
             
             // Texteingabe
-            TextField("", text: $searchQuery, prompt: Text("Suchen oder URL eingeben")
+            TextField("", text: $searchQuery, prompt: Text(L10n.Home.enterSearchOrURL)
                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel))
                 .font(.system(size: TVOSDesign.Typography.body, weight: .regular))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
@@ -138,7 +138,7 @@ struct EnhancedSearchBar: View {
             HStack(spacing: 12) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 22, weight: .semibold))
-                Text("Zurück")
+                Text(L10n.General.back)
                     .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
             }
             .foregroundColor(backButtonFocused ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.secondaryLabel)
@@ -173,7 +173,7 @@ struct EnhancedSearchBar: View {
     private func tabButton(action: @escaping () -> Void) -> some View {
         TVOSIconButton(
             icon: "rectangle.stack",
-            label: "Tabs",
+            label: L10n.General.tabs,
             isEnabled: true,
             gradient: LinearGradient(
                 colors: [TVOSDesign.Colors.systemIndigo, TVOSDesign.Colors.systemIndigo.opacity(0.8)],
@@ -190,7 +190,7 @@ struct EnhancedSearchBar: View {
     private var searchButton: some View {
         TVOSIconButton(
             icon: "arrow.right",
-            label: "Suchen",
+            label: L10n.General.search,
             isEnabled: !searchQuery.isEmpty,
             gradient: LinearGradient(
                 colors: searchQuery.isEmpty ?
@@ -213,7 +213,7 @@ struct EnhancedSearchBar: View {
             HStack {
                 Image(systemName: "clock")
                     .font(.system(size: 18))
-                Text("Letzte Suchen")
+                Text(L10n.Home.recentSearches)
                     .font(.system(size: TVOSDesign.Typography.footnote, weight: .semibold))
                     .textCase(.uppercase)
                     .tracking(1.2)

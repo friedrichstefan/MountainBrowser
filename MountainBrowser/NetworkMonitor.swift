@@ -17,10 +17,10 @@ final class NetworkMonitor {
     var connectionType: ConnectionType = .unknown
     
     enum ConnectionType: String {
-        case wifi = "WLAN"
+        case wifi = "Wi-Fi"
         case ethernet = "Ethernet"
-        case cellular = "Mobilfunk"
-        case unknown = "Unbekannt"
+        case cellular = "Cellular"
+        case unknown = "Unknown"
     }
     
     private let monitor: NWPathMonitor
@@ -115,11 +115,11 @@ struct OfflineBannerView: View {
                 .foregroundColor(.white)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text("Keine Internetverbindung")
+                Text(L10n.Network.noInternetConnection)
                     .font(.system(size: TVOSDesign.Typography.callout, weight: .bold))
                     .foregroundColor(.white)
                 
-                Text("Überprüfe deine Netzwerkverbindung in den Einstellungen")
+                Text(L10n.Network.checkNetworkConnection)
                     .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
                     .foregroundColor(.white.opacity(0.8))
             }
@@ -148,7 +148,7 @@ struct OfflineBannerView: View {
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(.white)
             
-            Text("Verbindung wiederhergestellt")
+            Text(L10n.Network.connectionRestored)
                 .font(.system(size: TVOSDesign.Typography.callout, weight: .bold))
                 .foregroundColor(.white)
             
@@ -205,11 +205,11 @@ struct OfflineStateView: View {
             }
             
             VStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-                Text("Keine Internetverbindung")
+                Text(L10n.Network.noInternetConnection)
                     .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 
-                Text("Bitte überprüfe deine Netzwerkverbindung und versuche es erneut.")
+                Text(L10n.Network.checkNetworkAndRetry)
                     .font(.system(size: TVOSDesign.Typography.body, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                     .multilineTextAlignment(.center)
@@ -222,8 +222,8 @@ struct OfflineStateView: View {
                         .frame(width: 10, height: 10)
                     
                     Text(networkMonitor.isConnected
-                         ? "Verbunden über \(networkMonitor.connectionType.rawValue)"
-                         : "Nicht verbunden")
+                         ? L10n.Network.connectedViaType(networkMonitor.connectionType.rawValue)
+                         : L10n.Network.notConnected)
                         .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
                         .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                 }
@@ -236,7 +236,7 @@ struct OfflineStateView: View {
             
             HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
                 TVOSButton(
-                    title: "Erneut versuchen",
+                    title: L10n.Network.retryConnection,
                     icon: "arrow.clockwise",
                     style: .primary
                 ) {
@@ -244,7 +244,7 @@ struct OfflineStateView: View {
                 }
                 
                 TVOSButton(
-                    title: "Netzwerk-Einstellungen",
+                    title: L10n.Network.networkSettings,
                     icon: "gear",
                     style: .secondary
                 ) {

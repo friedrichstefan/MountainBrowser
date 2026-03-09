@@ -41,7 +41,7 @@ struct URLInputSheet: View {
                             )
                         )
                     
-                    Text("URL oder Suchbegriff eingeben")
+                    Text(L10n.Home.urlOrSearchPromptTitle)
                         .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                         .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 }
@@ -50,7 +50,7 @@ struct URLInputSheet: View {
                 VStack(spacing: TVOSDesign.Spacing.elementSpacing * 1.5) {
                     
                     // tvOS TextField mit direktem Binding
-                    TextField("URL oder Suchbegriff...", text: $localText)
+                    TextField(L10n.Home.enterSearchOrURL, text: $localText)
                         .font(.system(size: TVOSDesign.Typography.title3, weight: .semibold))
                         .foregroundColor(TVOSDesign.Colors.primaryLabel)
                         .keyboardType(.default)
@@ -110,7 +110,7 @@ struct URLInputSheet: View {
                         HStack(spacing: 8) {
                             Image(systemName: "hand.tap.fill")
                                 .foregroundColor(TVOSDesign.Colors.accentBlue)
-                            Text("Klicke auf das Textfeld um die Tastatur zu öffnen")
+                            Text(String(localized: "urlInput.tapFieldHint", defaultValue: "Tap the text field to open keyboard"))
                                 .font(.system(size: TVOSDesign.Typography.callout, weight: .medium))
                                 .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                         }
@@ -125,7 +125,7 @@ struct URLInputSheet: View {
                     // Aktuelle Eingabe anzeigen (displayText für stabilere Anzeige)
                     if !displayText.isEmpty {
                         VStack(spacing: 8) {
-                            Text("Aktuelle Eingabe:")
+                            Text(String(localized: "urlInput.currentInput", defaultValue: "Current input:"))
                                 .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
                                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                             
@@ -149,7 +149,9 @@ struct URLInputSheet: View {
                         HStack(spacing: 12) {
                             Image(systemName: looksLikeURL(displayText) ? "globe" : "magnifyingglass")
                                 .foregroundColor(TVOSDesign.Colors.accentBlue)
-                            Text(looksLikeURL(displayText) ? "URL erkannt → Webseite öffnen" : "Suchbegriff → Google-Suche")
+                            Text(looksLikeURL(displayText) 
+                                 ? String(localized: "urlInput.urlDetected", defaultValue: "URL detected → Open website")
+                                 : String(localized: "urlInput.searchTermDetected", defaultValue: "Search term → Google search"))
                                 .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
                                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
                         }
@@ -177,7 +179,7 @@ struct URLInputSheet: View {
                             HStack(spacing: 12) {
                                 Image(systemName: looksLikeURL(displayText) ? "globe" : "magnifyingglass")
                                     .font(.system(size: 24))
-                                Text(looksLikeURL(displayText) ? "Webseite öffnen" : "Google-Suche starten")
+                                Text(looksLikeURL(displayText) ? L10n.URLInput.openWebsite : L10n.URLInput.startGoogleSearch)
                                     .font(.system(size: TVOSDesign.Typography.title3, weight: .bold))
                             }
                             .foregroundColor(.white)
@@ -204,7 +206,7 @@ struct URLInputSheet: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "globe")
-                                Text("Als URL öffnen")
+                                Text(String(localized: "urlInput.openAsURL", defaultValue: "Open as URL"))
                             }
                             .font(.system(size: TVOSDesign.Typography.body, weight: .semibold))
                             .foregroundColor(.white)
@@ -224,7 +226,7 @@ struct URLInputSheet: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "magnifyingglass")
-                                Text("In Google suchen")
+                                Text(String(localized: "urlInput.searchInGoogle", defaultValue: "Search in Google"))
                             }
                             .font(.system(size: TVOSDesign.Typography.body, weight: .semibold))
                             .foregroundColor(.white)
@@ -249,7 +251,7 @@ struct URLInputSheet: View {
                     inputText = ""
                     isPresented = false
                 } label: {
-                    Text("Abbrechen")
+                    Text(L10n.General.cancel)
                         .font(.system(size: TVOSDesign.Typography.body, weight: .medium))
                         .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                         .padding(.horizontal, TVOSDesign.Spacing.cardSpacing * 2)

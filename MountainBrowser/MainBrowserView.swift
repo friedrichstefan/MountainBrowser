@@ -251,12 +251,12 @@ struct MainBrowserView: View {
                 .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.systemBlue))
                 .scaleEffect(2.5)
             
-            Text("Suche läuft...")
+            Text(L10n.Search.searching)
                 .font(.system(size: TVOSDesign.Typography.body, weight: .medium))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityLabel("Suche läuft")
+        .accessibilityLabel(L10n.Search.searchAccessibility)
     }
     
     // MARK: - Tab-based Results View
@@ -353,7 +353,7 @@ struct MainBrowserView: View {
                 .shadow(color: TVOSDesign.Colors.accentOrange.opacity(0.5), radius: 20)
             
             VStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-                Text("Fehler bei der Suche")
+                Text(L10n.Search.searchError)
                     .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 
@@ -365,7 +365,7 @@ struct MainBrowserView: View {
             }
             
             TVOSButton(
-                title: "Erneut versuchen",
+                title: L10n.General.retry,
                 icon: "arrow.clockwise",
                 style: .primary
             ) {
@@ -376,7 +376,7 @@ struct MainBrowserView: View {
             .padding(.top, TVOSDesign.Spacing.elementSpacing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityLabel("Fehler: \(error)")
+        .accessibilityLabel("\(L10n.General.error): \(error)")
     }
     
     // MARK: - URL Input State
@@ -409,21 +409,21 @@ struct MainBrowserView: View {
                 }
                 
                 VStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-                    Text("Willkommen")
+                    Text(L10n.Home.welcome)
                         .font(.system(size: TVOSDesign.Typography.largeTitle, weight: .bold))
                         .foregroundColor(TVOSDesign.Colors.primaryLabel)
                     
-                    Text("Gib einen Suchbegriff oder eine URL ein")
+                    Text(L10n.Home.enterSearchOrURL)
                         .font(.system(size: TVOSDesign.Typography.body, weight: .regular))
                         .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 800)
                 }
                 
-                // URL-Eingabe Button (analog zum Referenzprojekt)
+                // URL-Eingabe Button
                 HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
                     TVOSButton(
-                        title: "URL eingeben",
+                        title: L10n.Home.enterURL,
                         icon: "link",
                         style: .primary
                     ) {
@@ -431,7 +431,7 @@ struct MainBrowserView: View {
                     }
                     
                     TVOSButton(
-                        title: "Google öffnen",
+                        title: L10n.Home.openGoogle,
                         icon: "globe",
                         style: .secondary
                     ) {
@@ -442,7 +442,7 @@ struct MainBrowserView: View {
                 
                 if !searchViewModel.searchHistory.isEmpty {
                     VStack(alignment: .leading, spacing: TVOSDesign.Spacing.elementSpacing) {
-                        Text("Zuletzt gesucht")
+                        Text(L10n.Home.recentSearches)
                             .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
                             .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                             .textCase(.uppercase)
@@ -468,8 +468,8 @@ struct MainBrowserView: View {
                 }
                 
                 TVOSSettingsButton(
-                    title: "Einstellungen",
-                    subtitle: "Browser konfigurieren",
+                    title: L10n.Home.settings,
+                    subtitle: L10n.Home.configureBrowser,
                     icon: "gearshape.fill"
                 ) {
                     showSettings = true
@@ -483,45 +483,43 @@ struct MainBrowserView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, TVOSDesign.Spacing.safeAreaTop)
-        .accessibilityLabel("Startseite. Gib einen Suchbegriff oder URL ein.")
-        .alert("URL oder Suchbegriff eingeben", isPresented: $showURLInput) {
-            TextField("URL oder Suchbegriff", text: $urlInputText)
+        .accessibilityLabel(L10n.Home.startPageAccessibility)
+        .alert(L10n.Home.urlOrSearchPromptTitle, isPresented: $showURLInput) {
+            TextField("URL", text: $urlInputText)
             
-            Button("Webseite öffnen") {
+            Button(L10n.Home.openWebsite) {
                 openDirectURL(urlInputText)
                 urlInputText = ""
             }
             
-            Button("Google-Suche") {
+            Button(L10n.Home.googleSearch) {
                 performGoogleSearch(urlInputText)
                 urlInputText = ""
             }
             
-            Button("Abbrechen", role: .cancel) {
+            Button(L10n.General.cancel, role: .cancel) {
                 urlInputText = ""
             }
         } message: {
-            Text("Gib eine URL (z.B. google.com) oder einen Suchbegriff ein")
+            Text(L10n.Home.urlOrSearchPromptMessage)
         }
     }
     
-    // MARK: - Direct URL Navigation (analog zum Referenzprojekt)
+    // MARK: - Direct URL Navigation
     
     private func openDirectURL(_ input: String) {
         var urlString = input.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !urlString.isEmpty else { return }
         
-        // URL-Schema hinzufügen wenn nicht vorhanden
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
             urlString = "http://\(urlString)"
         }
         
-        // SearchResult erstellen und WebView öffnen
         let directResult = SearchResult(
             title: urlString,
             url: urlString,
-            description: "Direkte URL",
+            description: L10n.Home.directURL,
             contentType: .web
         )
         selectedResult = directResult

@@ -42,7 +42,7 @@ struct SearchTabBar: View {
                 .fill(TVOSDesign.Colors.background.opacity(0.95))
                 .background(.ultraThinMaterial.opacity(0.5))
         )
-        .accessibilityLabel("Such-Tabs")
+        .accessibilityLabel(L10n.Search.searchTabs)
     }
 }
 
@@ -104,7 +104,7 @@ struct SearchTab: View {
         .animation(TVOSDesign.Animation.pressSpring, value: isPressed)
         .animation(TVOSDesign.Animation.focusSpring, value: isSelected)
         .accessibilityLabel("\(contentType.displayName) Tab")
-        .accessibilityValue(isSelected ? "Ausgewählt" : "")
+        .accessibilityValue(isSelected ? L10n.General.selected : "")
     }
     
     // MARK: - Computed Properties

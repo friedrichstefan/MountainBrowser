@@ -177,7 +177,7 @@ struct WikipediaInfoPanel: View {
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
         .animation(TVOSDesign.Animation.focusSpring, value: isExpanded)
         .accessibilityLabel("Wikipedia: \(wikipediaInfo.title)")
-        .accessibilityHint("Doppeltippen für den vollständigen Wikipedia-Artikel")
+        .accessibilityHint(L10n.Wikipedia.accessibilityHint)
         .accessibilityValue(wikipediaInfo.displaySummary)
     }
     
@@ -275,7 +275,7 @@ struct WikipediaInfoPanel: View {
                     
                     // "Mehr erfahren"-Hinweis
                     HStack(spacing: 8) {
-                        Text("Vollständigen Artikel ansehen")
+                        Text(L10n.Wikipedia.viewFullArticle)
                             .font(.system(size: TVOSDesign.Typography.caption, weight: .semibold))
                             .foregroundColor(TVOSDesign.Colors.accentBlue)
                         

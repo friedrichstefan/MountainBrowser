@@ -20,8 +20,8 @@ struct WikipediaInfo: Identifiable, Codable, Hashable, Sendable {
     /// Key-Value Informationen aus Wikipedia Infobox
     struct InfoField: Identifiable, Codable, Hashable, Sendable {
         let id: UUID
-        let key: String    // z.B. "Gegründet", "Hauptsitz", "CEO"
-        let value: String  // z.B. "1976", "Cupertino, CA", "Tim Cook"
+        let key: String
+        let value: String
         
         init(key: String, value: String) {
             self.id = UUID()
@@ -67,13 +67,23 @@ struct WikipediaInfo: Identifiable, Codable, Hashable, Sendable {
     }
     
     var attributionText: String {
+        return L10n.Wikipedia.fromWikipedia
+    }
+    
+    var localizedLanguageName: String {
         switch language {
         case "de":
-            return "Von Wikipedia"
+            return L10n.Wikipedia.germanWikipedia
         case "en":
-            return "From Wikipedia"
+            return L10n.Wikipedia.englishWikipedia
+        case "fr":
+            return L10n.Wikipedia.frenchWikipedia
+        case "es":
+            return L10n.Wikipedia.spanishWikipedia
+        case "it":
+            return L10n.Wikipedia.italianWikipedia
         default:
-            return "From Wikipedia"
+            return L10n.Wikipedia.englishWikipedia
         }
     }
 }
@@ -93,15 +103,15 @@ actor WikipediaService {
         var errorDescription: String? {
             switch self {
             case .invalidURL:
-                return "Ungültige Wikipedia URL"
+                return L10n.Wikipedia.errorInvalidURL
             case .noResults:
-                return "Keine Wikipedia-Artikel gefunden"
+                return L10n.Wikipedia.errorNoResults
             case .networkError(let error):
-                return "Netzwerkfehler: \(error.localizedDescription)"
+                return "\(L10n.Wikipedia.errorNetwork): \(error.localizedDescription)"
             case .parsingError:
-                return "Fehler beim Verarbeiten der Wikipedia-Daten"
+                return L10n.Wikipedia.errorParsing
             case .articleNotFound:
-                return "Wikipedia-Artikel nicht gefunden"
+                return L10n.Wikipedia.errorArticleNotFound
             }
         }
     }
@@ -112,15 +122,21 @@ actor WikipediaService {
         static let userAgent = "MountainBrowser/1.0 (tvOS; like Safari)"
         static let maxSummaryLength = 200
         
-        // Wikipedia API URLs
+        // Wikipedia API URLs (unterstützte Sprachen)
         static let baseURLs = [
             "de": "https://de.wikipedia.org/api/rest_v1",
-            "en": "https://en.wikipedia.org/api/rest_v1"
+            "en": "https://en.wikipedia.org/api/rest_v1",
+            "fr": "https://fr.wikipedia.org/api/rest_v1",
+            "es": "https://es.wikipedia.org/api/rest_v1",
+            "it": "https://it.wikipedia.org/api/rest_v1"
         ]
         
         static let searchURLs = [
             "de": "https://de.wikipedia.org/w/api.php",
-            "en": "https://en.wikipedia.org/w/api.php"
+            "en": "https://en.wikipedia.org/w/api.php",
+            "fr": "https://fr.wikipedia.org/w/api.php",
+            "es": "https://es.wikipedia.org/w/api.php",
+            "it": "https://it.wikipedia.org/w/api.php"
         ]
     }
     
@@ -140,15 +156,55 @@ actor WikipediaService {
     
     // MARK: - Public Methods
     
+    /// Ermittelt die bevorzugte Wikipedia-Sprache basierend auf den Einstellungen oder der Systemsprache
+    /// - Parameter preferredLanguageCode: Optional - die vom Benutzer gewählte Sprache aus den Einstellungen
+    private func preferredLanguages(preferredLanguageCode: String? = nil) -> [String] {
+        // Unterstützte Wikipedia-Sprachen
+        let supportedLanguages = ["de", "en", "fr", "es", "it"]
+        
+        // Erstelle priorisierte Sprachliste
+        var languages: [String] = []
+        
+        // Wenn eine bevorzugte Sprache übergeben wurde (nicht "system")
+        if let preferred = preferredLanguageCode, supportedLanguages.contains(preferred) {
+            languages.append(preferred)
+        } else {
+            // Hole die bevorzugte Systemsprache
+            let preferredLanguage = Locale.preferredLanguages.first ?? "en"
+            let languageCode = Locale(identifier: preferredLanguage).language.languageCode?.identifier ?? "en"
+            
+            // Primäre Sprache (falls unterstützt)
+            if supportedLanguages.contains(languageCode) {
+                languages.append(languageCode)
+            }
+        }
+        
+        // Fallback auf Englisch, wenn nicht bereits enthalten
+        if !languages.contains("en") {
+            languages.append("en")
+        }
+        
+        // Fallback auf Deutsch, wenn nicht bereits enthalten
+        if !languages.contains("de") {
+            languages.append("de")
+        }
+        
+        return languages
+    }
+    
     /// Sucht nach Wikipedia-Informationen für eine Suchanfrage
-    func searchWikipedia(query: String) async throws -> WikipediaInfo? {
+    /// - Parameters:
+    ///   - query: Die Suchanfrage
+    ///   - preferredLanguageCode: Optional - die vom Benutzer gewählte Sprache (z.B. "de", "en", "fr", "es", "it")
+    ///                            Wenn nil oder "system", wird die Systemsprache verwendet
+    func searchWikipedia(query: String, preferredLanguageCode: String? = nil) async throws -> WikipediaInfo? {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
             throw WikipediaError.invalidURL
         }
         
-        // Versuche zuerst deutsche Wikipedia, dann englische
-        for language in ["de", "en"] {
+        // Versuche Wikipedia-Suche in der Reihenfolge der bevorzugten Sprache(n)
+        for language in preferredLanguages(preferredLanguageCode: preferredLanguageCode) {
             do {
                 if let info = try await fetchWikipediaInfo(query: trimmedQuery, language: language) {
                     return info
@@ -258,12 +314,26 @@ actor WikipediaService {
         let pageURL = json["content_urls"] as? [String: Any]
         let desktopURL = (pageURL?["desktop"] as? [String: Any])?["page"] as? String ?? ""
         
-        // Basis Info-Felder (diese könnten durch Infobox-Parsing erweitert werden)
+        // Basis Info-Felder
         var infoFields: [WikipediaInfo.InfoField] = []
         
         // Füge Sprache als Info hinzu
-        let languageDisplayName = language == "de" ? "Deutsch" : "English"
-        infoFields.append(WikipediaInfo.InfoField(key: "Sprache", value: languageDisplayName))
+        let languageDisplayName: String
+        switch language {
+        case "de":
+            languageDisplayName = L10n.Wikipedia.languageNameGerman
+        case "en":
+            languageDisplayName = L10n.Wikipedia.languageNameEnglish
+        case "fr":
+            languageDisplayName = L10n.Wikipedia.languageNameFrench
+        case "es":
+            languageDisplayName = L10n.Wikipedia.languageNameSpanish
+        case "it":
+            languageDisplayName = L10n.Wikipedia.languageNameItalian
+        default:
+            languageDisplayName = L10n.Wikipedia.languageNameEnglish
+        }
+        infoFields.append(WikipediaInfo.InfoField(key: L10n.Wikipedia.language, value: languageDisplayName))
         
         return WikipediaInfo(
             title: title,
@@ -284,7 +354,6 @@ actor WikipediaService {
         
         switch language {
         case "de":
-            // Deutsche Begriffsklärungsmerkmale
             return lowercaseTitle.contains("begriffsklärung") ||
                    lowercaseTitle.contains("(begriffskl") ||
                    lowercaseSnippet.contains("steht für:") ||
@@ -292,7 +361,6 @@ actor WikipediaService {
                    lowercaseSnippet.contains("kann bezeichnen") ||
                    lowercaseSnippet.contains("ist eine begriffsklärung")
         case "en":
-            // Englische Begriffsklärungsmerkmale
             return lowercaseTitle.contains("disambiguation") ||
                    lowercaseTitle.contains("(disambig") ||
                    lowercaseSnippet.contains("may refer to:") ||
@@ -308,17 +376,14 @@ actor WikipediaService {
         let normalizedQuery = normalizeString(query)
         let normalizedTitle = normalizeString(title)
         
-        // Exakte Übereinstimmung (nach Normalisierung)
         if normalizedQuery == normalizedTitle {
             return 1.0
         }
         
-        // Titel enthält die gesamte Suchanfrage
         if normalizedTitle.contains(normalizedQuery) {
             return 0.8
         }
         
-        // Wort-basierte Ähnlichkeit (Jaccard-Index)
         let queryWords = Set(normalizedQuery.split(separator: " ").map(String.init))
         let titleWords = Set(normalizedTitle.split(separator: " ").map(String.init))
         
@@ -345,10 +410,8 @@ actor WikipediaService {
     private func cleanHTMLFromSnippet(_ snippet: String) -> String {
         var cleaned = snippet
         
-        // Entferne HTML-Tags
         cleaned = cleaned.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
         
-        // Dekodiere HTML-Entities
         cleaned = cleaned.replacingOccurrences(of: "&amp;", with: "&")
         cleaned = cleaned.replacingOccurrences(of: "&lt;", with: "<")
         cleaned = cleaned.replacingOccurrences(of: "&gt;", with: ">")
@@ -356,7 +419,6 @@ actor WikipediaService {
         cleaned = cleaned.replacingOccurrences(of: "&#39;", with: "'")
         cleaned = cleaned.replacingOccurrences(of: "&nbsp;", with: " ")
         
-        // Normalisiere Leerzeichen
         cleaned = cleaned.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)

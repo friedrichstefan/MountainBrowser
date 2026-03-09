@@ -103,7 +103,7 @@ struct WikipediaDetailView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "book.closed.fill")
                             .font(.system(size: 16, weight: .semibold))
-                        Text(wikipediaInfo.language == "de" ? "Deutsche Wikipedia" : "English Wikipedia")
+                        Text(wikipediaInfo.localizedLanguageName)
                             .font(.system(size: TVOSDesign.Typography.footnote, weight: .bold))
                             .textCase(.uppercase)
                             .tracking(1.5)
@@ -167,7 +167,7 @@ struct WikipediaDetailView: View {
                 
                 if wikipediaInfo.summary.count > 300 {
                     HStack(spacing: 6) {
-                        Text("Vollständig lesen")
+                        Text(L10n.Wikipedia.readCompletely)
                             .font(.system(size: TVOSDesign.Typography.caption, weight: .semibold))
                         Image(systemName: "arrow.up.right.square")
                             .font(.system(size: 14))
@@ -209,7 +209,7 @@ struct WikipediaDetailView: View {
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(TVOSDesign.Colors.accentBlue)
                 
-                Text("Informationen")
+                Text(L10n.Wikipedia.information)
                     .font(.system(size: TVOSDesign.Typography.title3, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 
@@ -267,7 +267,7 @@ struct WikipediaDetailView: View {
                     .font(.system(size: 26, weight: .semibold))
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Vollständigen Artikel lesen")
+                    Text(L10n.Wikipedia.readFullArticle)
                         .font(.system(size: TVOSDesign.Typography.callout, weight: .bold))
                     Text(shortArticleURL)
                         .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))

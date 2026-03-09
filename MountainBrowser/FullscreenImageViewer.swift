@@ -155,7 +155,7 @@ struct FullscreenImageViewer: View {
                 HStack(spacing: 12) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 24, weight: .semibold))
-                    Text("Zurück")
+                    Text(L10n.General.back)
                         .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
                 }
                 .foregroundColor(backButtonFocused ? .white : TVOSDesign.Colors.secondaryLabel)

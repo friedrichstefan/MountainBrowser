@@ -9,6 +9,49 @@ import Foundation
 import SwiftData
 import Combine
 
+/// Wikipedia-Sprachcode
+enum WikipediaLanguage: String, Codable, CaseIterable {
+    case system = "system"  // Folgt der Systemsprache
+    case german = "de"
+    case english = "en"
+    case french = "fr"
+    case spanish = "es"
+    case italian = "it"
+    
+    var displayName: String {
+        switch self {
+        case .system:
+            return L10n.Wikipedia.languageSystem
+        case .german:
+            return L10n.Wikipedia.languageNameGerman
+        case .english:
+            return L10n.Wikipedia.languageNameEnglish
+        case .french:
+            return L10n.Wikipedia.languageNameFrench
+        case .spanish:
+            return L10n.Wikipedia.languageNameSpanish
+        case .italian:
+            return L10n.Wikipedia.languageNameItalian
+        }
+    }
+    
+    /// Gibt den tatsächlichen Sprachcode zurück (bei system die Systemsprache)
+    var resolvedLanguageCode: String {
+        if self == .system {
+            // Systemsprache ermitteln
+            let preferredLanguages = Locale.preferredLanguages
+            for lang in preferredLanguages {
+                let code = String(lang.prefix(2))
+                if ["de", "en", "fr", "es", "it"].contains(code) {
+                    return code
+                }
+            }
+            return "de" // Default
+        }
+        return rawValue
+    }
+}
+
 /// Browser-Ansichtsmodus
 enum BrowserViewMode: String, Codable, CaseIterable {
     case scrollView = "scroll"    // Standard Fokus-basierte Navigation
@@ -17,18 +60,18 @@ enum BrowserViewMode: String, Codable, CaseIterable {
     var displayName: String {
         switch self {
         case .scrollView:
-            return "Scroll View"
+            return L10n.ViewMode.scrollView
         case .cursorView:
-            return "Cursor View"
+            return L10n.ViewMode.cursorView
         }
     }
     
     var description: String {
         switch self {
         case .scrollView:
-            return "Standard-Navigation mit Fokus und Scroll"
+            return L10n.ViewMode.scrollViewDesc
         case .cursorView:
-            return "Maus-Cursor Navigation mit Touchpad"
+            return L10n.ViewMode.cursorViewDesc
         }
     }
 }
@@ -46,6 +89,7 @@ struct BrowserPreferences {
     var showTopNavigation: Bool
     var defaultZoom: Float
     var viewMode: BrowserViewMode
+    var wikipediaLanguage: WikipediaLanguage
     
     init(
         homepage: String = "https://www.google.com",
@@ -57,7 +101,8 @@ struct BrowserPreferences {
         blockPopups: Bool = true,
         showTopNavigation: Bool = true,
         defaultZoom: Float = 1.0,
-        viewMode: BrowserViewMode = .scrollView
+        viewMode: BrowserViewMode = .scrollView,
+        wikipediaLanguage: WikipediaLanguage = .system
     ) {
         self.homepage = homepage
         self.searchEngine = searchEngine
@@ -69,6 +114,7 @@ struct BrowserPreferences {
         self.showTopNavigation = showTopNavigation
         self.defaultZoom = defaultZoom
         self.viewMode = viewMode
+        self.wikipediaLanguage = wikipediaLanguage
     }
 }
 
@@ -117,6 +163,7 @@ final class SessionManager: ObservableObject {
         static let showTopNavigation = "browser.showTopNavigation"
         static let defaultZoom = "browser.defaultZoom"
         static let viewMode = "browser.viewMode"
+        static let wikipediaLanguage = "browser.wikipediaLanguage"
     }
     
     init() {
@@ -131,7 +178,8 @@ final class SessionManager: ObservableObject {
             blockPopups: UserDefaults.standard.object(forKey: Keys.blockPopups) as? Bool ?? true,
             showTopNavigation: UserDefaults.standard.object(forKey: Keys.showTopNavigation) as? Bool ?? true,
             defaultZoom: UserDefaults.standard.object(forKey: Keys.defaultZoom) as? Float ?? 1.0,
-            viewMode: BrowserViewMode(rawValue: UserDefaults.standard.string(forKey: Keys.viewMode) ?? "scroll") ?? .scrollView
+            viewMode: BrowserViewMode(rawValue: UserDefaults.standard.string(forKey: Keys.viewMode) ?? "scroll") ?? .scrollView,
+            wikipediaLanguage: WikipediaLanguage(rawValue: UserDefaults.standard.string(forKey: Keys.wikipediaLanguage) ?? "system") ?? .system
         )
     }
     
@@ -147,6 +195,7 @@ final class SessionManager: ObservableObject {
         UserDefaults.standard.set(preferences.showTopNavigation, forKey: Keys.showTopNavigation)
         UserDefaults.standard.set(preferences.defaultZoom, forKey: Keys.defaultZoom)
         UserDefaults.standard.set(preferences.viewMode.rawValue, forKey: Keys.viewMode)
+        UserDefaults.standard.set(preferences.wikipediaLanguage.rawValue, forKey: Keys.wikipediaLanguage)
     }
     
     /// Erstellt neue Session

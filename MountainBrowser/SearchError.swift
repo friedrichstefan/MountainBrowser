@@ -2,12 +2,12 @@
 //  SearchError.swift
 //  MountainBrowser
 //
-//  Gemeinsamer Fehler-Typ für alle Such-Services
+//  Globale Fehlertypen für Suchoperationen
 //
 
 import Foundation
 
-/// Gemeinsamer Fehler-Typ für Such-Operationen
+/// Globale Fehlertypen für alle Such-Services
 enum SearchError: LocalizedError {
     case invalidURL
     case invalidQuery
@@ -15,10 +15,9 @@ enum SearchError: LocalizedError {
     case parsingError
     case noResults
     case rateLimited
-    case backendError(String)
     case apiKeyMissing
     case apiQuotaExceeded
-    case cancelled  // FIX: Für saubere Task-Abbrüche
+    case cancelled
     
     var errorDescription: String? {
         switch self {
@@ -34,8 +33,6 @@ enum SearchError: LocalizedError {
             return "Keine Ergebnisse gefunden"
         case .rateLimited:
             return "Zu viele Anfragen. Bitte warte einen Moment."
-        case .backendError(let message):
-            return "Backend-Fehler: \(message)"
         case .apiKeyMissing:
             return "API-Key nicht konfiguriert"
         case .apiQuotaExceeded:

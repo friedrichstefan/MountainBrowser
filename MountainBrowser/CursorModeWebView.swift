@@ -115,7 +115,7 @@ struct WebViewTextInputSheet: View {
                     Button {
                         onCancel()
                     } label: {
-                        Text("Abbrechen")
+                        Text(L10n.General.cancel)
                             .font(.system(size: TVOSDesign.Typography.body, weight: .medium))
                             .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                             .padding(.horizontal, 40)

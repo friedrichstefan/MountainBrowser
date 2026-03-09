@@ -57,11 +57,11 @@ struct SimpleBrowserTabView: View {
     private var headerView: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Tabs")
+                Text(L10n.General.tabs)
                     .font(.system(size: TVOSDesign.Typography.largeTitle, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 
-                Text("\(tabManager.tabs.count) von \(tabManager.canCreateNewTab ? "8" : "8") Tabs")
+                Text(L10n.Tabs.tabCountOf(tabManager.tabs.count, 8))
                     .font(.system(size: TVOSDesign.Typography.callout, weight: .medium))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
             }
@@ -76,7 +76,7 @@ struct SimpleBrowserTabView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "trash")
                             .font(.system(size: 20))
-                        Text("Alle schließen")
+                        Text(L10n.TabActions.closeAll)
                             .font(.system(size: TVOSDesign.Typography.callout, weight: .medium))
                     }
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
@@ -140,16 +140,16 @@ struct SimpleBrowserTabView: View {
                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
             
             VStack(spacing: 12) {
-                Text("Keine Tabs geöffnet")
+                Text(L10n.Tabs.noTabsOpen)
                     .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 
-                Text("Erstelle einen neuen Tab, um loszulegen")
+                Text(L10n.Tabs.createNewTabToStart)
                     .font(.system(size: TVOSDesign.Typography.body))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
             }
             
-            TVOSButton(title: "Neuer Tab", icon: "plus.circle.fill", style: .primary) {
+            TVOSButton(title: L10n.General.newTab, icon: "plus.circle.fill", style: .primary) {
                 onNewTab()
                 dismiss()
             }
@@ -179,7 +179,7 @@ private struct TabCard: View {
                     Spacer()
                     
                     if isActive {
-                        Text("Aktiv")
+                        Text(L10n.General.active)
                             .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 10)
@@ -281,9 +281,9 @@ private struct TabCard: View {
     }
     
     private var tabTypeLabel: String {
-        if tab.isSearchTab { return "Suche" }
-        if tab.isBlank { return "Leer" }
-        return "Web"
+        if tab.isSearchTab { return L10n.Tabs.searchTab }
+        if tab.isBlank { return L10n.Tabs.empty }
+        return L10n.General.web
     }
     
     private var tabBadgeColor: Color {
@@ -309,7 +309,7 @@ private struct NewTabKachel: View {
                     .font(.system(size: 48, weight: .light))
                     .foregroundColor(isFocused ? TVOSDesign.Colors.accentBlue : TVOSDesign.Colors.tertiaryLabel)
                 
-                Text("Neuer Tab")
+                Text(L10n.General.newTab)
                     .font(.system(size: TVOSDesign.Typography.callout, weight: .medium))
                     .foregroundColor(isFocused ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.secondaryLabel)
                 

@@ -46,7 +46,7 @@ final class BrowserTab {
     @Transient private var _wikipediaInfoLoaded: Bool = false
     
     init(
-        title: String = "Neuer Tab",
+        title: String = "",
         urlString: String = "",
         faviconURL: String? = nil,
         previewImageData: Data? = nil,
@@ -87,13 +87,13 @@ final class BrowserTab {
         if isSearchTab, let query = searchQuery, !query.isEmpty {
             return query
         }
-        if !title.isEmpty && title != "Neuer Tab" {
+        if !title.isEmpty && title != L10n.General.newTab {
             return title
         }
         if let url = URL(string: urlString), let host = url.host {
             return host
         }
-        return "Neuer Tab"
+        return L10n.General.newTab
     }
     
     var displayURL: String {
@@ -132,20 +132,20 @@ final class BrowserTab {
     /// Zusammenfassung der Ergebnisse als String
     var resultsSummary: String {
         var parts: [String] = []
-        if webResultsCount > 0 { parts.append("\(webResultsCount) Web") }
-        if imageResultsCount > 0 { parts.append("\(imageResultsCount) Bilder") }
-        if videoResultsCount > 0 { parts.append("\(videoResultsCount) Videos") }
-        if parts.isEmpty { return "Keine Ergebnisse" }
+        if webResultsCount > 0 { parts.append(L10n.Results.webCount(webResultsCount)) }
+        if imageResultsCount > 0 { parts.append(L10n.Results.imageCount(imageResultsCount)) }
+        if videoResultsCount > 0 { parts.append(L10n.Results.videoCount(videoResultsCount)) }
+        if parts.isEmpty { return L10n.Results.noResults }
         return parts.joined(separator: " · ")
     }
     
     /// Relative Zeitangabe seit letztem Zugriff
     var lastAccessedRelative: String {
         let interval = Date().timeIntervalSince(dateLastAccessed)
-        if interval < 60 { return "Gerade eben" }
-        if interval < 3600 { return "Vor \(Int(interval / 60)) Min." }
-        if interval < 86400 { return "Vor \(Int(interval / 3600)) Std." }
-        return "Vor \(Int(interval / 86400)) Tagen"
+        if interval < 60 { return L10n.Tabs.justNow }
+        if interval < 3600 { return L10n.Tabs.minutesAgo(Int(interval / 60)) }
+        if interval < 86400 { return L10n.Tabs.hoursAgo(Int(interval / 3600)) }
+        return L10n.Tabs.daysAgo(Int(interval / 86400))
     }
     
     // MARK: - Methods
@@ -192,7 +192,7 @@ extension BrowserTab {
     /// Erstellt einen neuen Such-Tab
     static func createSearchTab(query: String) -> BrowserTab {
         let tab = BrowserTab(
-            title: "Suche: \(query)",
+            title: L10n.Search.searchPrefix(query),
             urlString: "",
             isActive: false,
             searchQuery: query,
@@ -365,7 +365,7 @@ extension BrowserTab {
         self.wikipediaInfoData = nil
         self.searchQuery = nil
         self.isSearchTab = false
-        self.title = "Neuer Tab"
+        self.title = L10n.General.newTab
         self.webResultsCount = 0
         self.imageResultsCount = 0
         self.videoResultsCount = 0
@@ -383,12 +383,12 @@ extension BrowserTab {
 
 extension BrowserTab {
     static func createNewTab() -> BrowserTab {
-        return BrowserTab(title: "Neuer Tab", urlString: "", isActive: false)
+        return BrowserTab(title: L10n.General.newTab, urlString: "", isActive: false)
     }
     
     static func createTabWithURL(_ url: String, title: String? = nil) -> BrowserTab {
         let tab = BrowserTab(
-            title: title ?? "Lädt...",
+            title: title ?? L10n.General.loading,
             urlString: url,
             isActive: false
         )

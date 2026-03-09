@@ -295,7 +295,7 @@ struct NativeVideoPlayerView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.accentBlue))
                         .scaleEffect(2.0)
                     
-                    Text("Video wird geladen...")
+                    Text(L10n.Video.videoLoading)
                         .font(.system(size: TVOSDesign.Typography.subheadline, weight: .medium))
                         .foregroundColor(TVOSDesign.Colors.primaryLabel)
                     
@@ -312,7 +312,7 @@ struct NativeVideoPlayerView: View {
                         .font(.system(size: 60))
                         .foregroundColor(TVOSDesign.Colors.systemOrange)
                     
-                    Text("Video kann nicht abgespielt werden")
+                    Text(L10n.Video.videoCannotPlay)
                         .font(.system(size: TVOSDesign.Typography.title3, weight: .bold))
                         .foregroundColor(TVOSDesign.Colors.primaryLabel)
                     
@@ -322,7 +322,7 @@ struct NativeVideoPlayerView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
                     
-                    TVOSButton(title: "Zurück", icon: "chevron.left", style: .primary) {
+                    TVOSButton(title: L10n.General.back, icon: "chevron.left", style: .primary) {
                         isPresented = false
                     }
                     .padding(.top, 20)
@@ -338,7 +338,7 @@ struct NativeVideoPlayerView: View {
         .onExitCommand {
             isPresented = false
         }
-        .accessibilityLabel("Videoplayer: \(title)")
+        .accessibilityLabel(L10n.Video.videoPlayerAccessibility(title))
     }
     
     private func loadVideo() {
@@ -355,7 +355,7 @@ struct NativeVideoPlayerView: View {
         }
         
         isLoading = false
-        errorMessage = "Dieses Video kann nicht direkt abgespielt werden.\n\nÖffne es im Browser, um es anzuschauen."
+        errorMessage = L10n.Video.videoNotDirectlyPlayable
     }
     
     private func setupPlayer(with videoURL: URL) {
@@ -376,7 +376,7 @@ struct NativeVideoPlayerView: View {
             queue: .main
         ) { notification in
             let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-            errorMessage = error?.localizedDescription ?? "Unbekannter Wiedergabefehler"
+            errorMessage = error?.localizedDescription ?? L10n.General.error
             player?.pause()
         }
         

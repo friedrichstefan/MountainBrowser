@@ -68,7 +68,7 @@ struct NativeReaderView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 22, weight: .semibold))
-                    Text(navigationStack.isEmpty ? "Schließen" : "Zurück")
+                    Text(navigationStack.isEmpty ? L10n.General.close : L10n.General.back)
                         .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
                 }
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
@@ -111,7 +111,7 @@ struct NativeReaderView: View {
             HStack(spacing: 8) {
                 Image(systemName: "book.fill")
                     .font(.system(size: 18, weight: .medium))
-                Text("Reader")
+                Text(L10n.Reader.reader)
                     .font(.system(size: TVOSDesign.Typography.caption, weight: .semibold))
             }
             .foregroundColor(TVOSDesign.Colors.systemOrange)
@@ -137,7 +137,7 @@ struct NativeReaderView: View {
                 .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.systemBlue))
                 .scaleEffect(2.5)
             
-            Text("Seite wird geladen...")
+            Text(L10n.Reader.pageLoading)
                 .font(.system(size: TVOSDesign.Typography.body, weight: .medium))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
             
@@ -156,7 +156,7 @@ struct NativeReaderView: View {
                 .font(.system(size: 80))
                 .foregroundColor(TVOSDesign.Colors.systemOrange)
             
-            Text("Seite konnte nicht geladen werden")
+            Text(L10n.Reader.pageLoadFailed)
                 .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
             
@@ -166,7 +166,7 @@ struct NativeReaderView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 600)
             
-            TVOSButton(title: "Erneut versuchen", icon: "arrow.clockwise", style: .primary) {
+            TVOSButton(title: L10n.General.retry, icon: "arrow.clockwise", style: .primary) {
                 loadPage(url)
             }
         }
@@ -328,7 +328,7 @@ struct NativeReaderView: View {
                 .background(TVOSDesign.Colors.tertiaryLabel)
                 .padding(.vertical, TVOSDesign.Spacing.elementSpacing)
             
-            Text("Links auf dieser Seite")
+            Text(L10n.Reader.linksOnPage)
                 .font(.system(size: TVOSDesign.Typography.title3, weight: .semibold))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
             

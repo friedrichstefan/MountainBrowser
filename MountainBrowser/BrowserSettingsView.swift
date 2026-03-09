@@ -19,10 +19,12 @@ struct BrowserSettingsView: View {
     
     enum SettingsItem: Hashable {
         case backButton
+        case viewMode
         case javaScript
         case cookies
         case popups
         case navigation
+        case wikipediaLanguage
         case reset
         case about
     }
@@ -38,7 +40,9 @@ struct BrowserSettingsView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 60) {
                     headerSection
+                    viewModeSection
                     webSettingsSection
+                    wikipediaSettingsSection
                     footerSection
                     Spacer(minLength: TVOSDesign.Spacing.safeAreaBottom + 80)
                 }
@@ -121,7 +125,7 @@ struct BrowserSettingsView: View {
             HStack(spacing: 10) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 20, weight: .bold))
-                Text("Zurück")
+                Text(L10n.General.back)
                     .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
             }
             .foregroundColor(isFocused ? .white : TVOSDesign.Colors.secondaryLabel)
@@ -152,26 +156,118 @@ struct BrowserSettingsView: View {
     
     private var headerTitle: some View {
         VStack(alignment: .trailing, spacing: 4) {
-            Text("Einstellungen")
+            Text(L10n.Settings.title)
                 .font(.system(size: TVOSDesign.Typography.largeTitle, weight: .bold))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
             
-            Text("Browser konfigurieren")
+            Text(L10n.Settings.subtitle)
                 .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
         }
+    }
+    
+    // MARK: - View Mode Section
+    
+    private var viewModeSection: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            sectionLabel(title: L10n.ViewMode.title, icon: "rectangle.on.rectangle")
+            
+            viewModeSelector
+        }
+    }
+    
+    private var viewModeSelector: some View {
+        let isFocused = focusedItem == .viewMode
+        let currentMode = sessionManager.preferences.viewMode
+        
+        return Button(action: {
+            withAnimation(TVOSDesign.Animation.focusSpring) {
+                let allCases = BrowserViewMode.allCases
+                if let currentIndex = allCases.firstIndex(of: currentMode) {
+                    let nextIndex = (currentIndex + 1) % allCases.count
+                    sessionManager.preferences.viewMode = allCases[nextIndex]
+                    sessionManager.savePreferences()
+                }
+            }
+        }) {
+            HStack(spacing: 20) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [TVOSDesign.Colors.systemPurple.opacity(isFocused ? 0.45 : 0.25), TVOSDesign.Colors.systemPurple.opacity(isFocused ? 0.2 : 0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 52, height: 52)
+                    
+                    Image(systemName: currentMode == .scrollView ? "arrow.up.arrow.down" : "cursorarrow.rays")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.systemPurple : TVOSDesign.Colors.systemPurple.opacity(0.8))
+                }
+                
+                // Text
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.ViewMode.selection)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.primaryLabel)
+                    
+                    Text(currentMode.description)
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.secondaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                }
+                
+                Spacer()
+                
+                // Aktueller Modus
+                HStack(spacing: 8) {
+                    Text(currentMode.displayName)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.systemPurple)
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.tertiaryLabel)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(
+                        isFocused ? TVOSDesign.Colors.systemPurple.opacity(0.7) : Color.white.opacity(0.05),
+                        lineWidth: isFocused ? 2.0 : 1
+                    )
+            )
+        }
+        .buttonStyle(TransparentButtonStyle())
+        .focused($focusedItem, equals: .viewMode)
+        .scaleEffect(isFocused ? 1.02 : 1.0)
+        .shadow(
+            color: isFocused ? TVOSDesign.Colors.systemPurple.opacity(0.25) : Color.clear,
+            radius: isFocused ? 24 : 0,
+            y: isFocused ? 10 : 0
+        )
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+        .animation(TVOSDesign.Animation.focusSpring, value: currentMode)
     }
     
     // MARK: - Web Settings Section
     
     private var webSettingsSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            sectionLabel(title: "WEB-EINSTELLUNGEN", icon: "globe")
+            sectionLabel(title: L10n.Settings.webSettings, icon: "globe")
             
             VStack(spacing: 2) {
                 settingsToggleRow(
-                    title: "JavaScript",
-                    subtitle: "Interaktive Web-Inhalte aktivieren",
+                    title: L10n.Settings.javaScript,
+                    subtitle: L10n.Settings.javaScriptSubtitle,
                     icon: "swift",
                     iconColor: TVOSDesign.Colors.systemOrange,
                     isOn: sessionManager.preferences.enableJavaScript,
@@ -183,8 +279,8 @@ struct BrowserSettingsView: View {
                 }
                 
                 settingsToggleRow(
-                    title: "Cookies",
-                    subtitle: "Website-Einstellungen speichern",
+                    title: L10n.Settings.cookies,
+                    subtitle: L10n.Settings.cookiesSubtitle,
                     icon: "server.rack",
                     iconColor: TVOSDesign.Colors.systemTeal,
                     isOn: sessionManager.preferences.enableCookies,
@@ -196,8 +292,8 @@ struct BrowserSettingsView: View {
                 }
                 
                 settingsToggleRow(
-                    title: "Pop-up Blocker",
-                    subtitle: "Unerwünschte Fenster blockieren",
+                    title: L10n.Settings.popupBlocker,
+                    subtitle: L10n.Settings.popupBlockerSubtitle,
                     icon: "shield.lefthalf.filled",
                     iconColor: TVOSDesign.Colors.systemGreen,
                     isOn: sessionManager.preferences.blockPopups,
@@ -209,8 +305,8 @@ struct BrowserSettingsView: View {
                 }
                 
                 settingsToggleRow(
-                    title: "Navigation",
-                    subtitle: "URL-Leiste und Bedienelemente anzeigen",
+                    title: L10n.Settings.navigation,
+                    subtitle: L10n.Settings.navigationSubtitle,
                     icon: "safari",
                     iconColor: TVOSDesign.Colors.accentBlue,
                     isOn: sessionManager.preferences.showTopNavigation,
@@ -222,6 +318,99 @@ struct BrowserSettingsView: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Wikipedia Settings Section
+    
+    private var wikipediaSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            sectionLabel(title: "WIKIPEDIA", icon: "book.closed")
+            
+            wikipediaLanguageSelector
+        }
+    }
+    
+    private var wikipediaLanguageSelector: some View {
+        let isFocused = focusedItem == .wikipediaLanguage
+        let currentLanguage = sessionManager.preferences.wikipediaLanguage
+        
+        return Button(action: {
+            // Zur nächsten Sprache wechseln
+            withAnimation(TVOSDesign.Animation.focusSpring) {
+                let allCases = WikipediaLanguage.allCases
+                if let currentIndex = allCases.firstIndex(of: currentLanguage) {
+                    let nextIndex = (currentIndex + 1) % allCases.count
+                    sessionManager.preferences.wikipediaLanguage = allCases[nextIndex]
+                    sessionManager.savePreferences()
+                }
+            }
+        }) {
+            HStack(spacing: 20) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [TVOSDesign.Colors.systemIndigo.opacity(isFocused ? 0.45 : 0.25), TVOSDesign.Colors.systemIndigo.opacity(isFocused ? 0.2 : 0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 52, height: 52)
+                    
+                    Image(systemName: "globe")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.systemIndigo : TVOSDesign.Colors.systemIndigo.opacity(0.8))
+                }
+                
+                // Text
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.Wikipedia.languageSelection)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.primaryLabel)
+                    
+                    Text(L10n.Wikipedia.languageSelectionSubtitle)
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .regular))
+                        .foregroundColor(isFocused ? TVOSDesign.Colors.secondaryLabel : TVOSDesign.Colors.tertiaryLabel)
+                }
+                
+                Spacer()
+                
+                // Aktuelle Sprache
+                HStack(spacing: 8) {
+                    Text(currentLanguage.displayName)
+                        .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.accentBlue)
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isFocused ? .white : TVOSDesign.Colors.tertiaryLabel)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(
+                        isFocused ? TVOSDesign.Colors.systemIndigo.opacity(0.7) : Color.white.opacity(0.05),
+                        lineWidth: isFocused ? 2.0 : 1
+                    )
+            )
+        }
+        .buttonStyle(TransparentButtonStyle())
+        .focused($focusedItem, equals: .wikipediaLanguage)
+        .scaleEffect(isFocused ? 1.02 : 1.0)
+        .shadow(
+            color: isFocused ? TVOSDesign.Colors.systemIndigo.opacity(0.25) : Color.clear,
+            radius: isFocused ? 24 : 0,
+            y: isFocused ? 10 : 0
+        )
+        .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
+        .animation(TVOSDesign.Animation.focusSpring, value: currentLanguage)
     }
     
     // MARK: - Row Position
@@ -290,7 +479,7 @@ struct BrowserSettingsView: View {
     
     private var footerSection: some View {
         VStack(spacing: 24) {
-            sectionLabel(title: "AKTIONEN", icon: "slider.horizontal.3")
+            sectionLabel(title: L10n.Settings.actions, icon: "slider.horizontal.3")
             
             HStack(spacing: 24) {
                 resetButton
@@ -314,8 +503,8 @@ struct BrowserSettingsView: View {
             }
         }) {
             SettingsActionRowContent(
-                title: "Zurücksetzen",
-                subtitle: "Alle Einstellungen auf Standard",
+                title: L10n.Settings.reset,
+                subtitle: L10n.Settings.resetSubtitle,
                 icon: "arrow.counterclockwise",
                 iconColor: TVOSDesign.Colors.systemRed,
                 isFocused: isFocused,
@@ -342,8 +531,8 @@ struct BrowserSettingsView: View {
             showAbout = true
         }) {
             SettingsActionRowContent(
-                title: "Über diese App",
-                subtitle: "Info, Version & Credits",
+                title: L10n.Settings.aboutApp,
+                subtitle: L10n.Settings.aboutAppSubtitle,
                 icon: "info.circle",
                 iconColor: TVOSDesign.Colors.systemIndigo,
                 isFocused: isFocused,
@@ -439,7 +628,7 @@ private struct AboutAppView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 20, weight: .bold))
-                        Text("Einstellungen")
+                        Text(L10n.Settings.title)
                             .font(.system(size: TVOSDesign.Typography.subheadline, weight: .semibold))
                     }
                     .foregroundColor(focusedItem == .backButton ? .white : TVOSDesign.Colors.secondaryLabel)
@@ -502,7 +691,7 @@ private struct AboutAppView: View {
                         .font(.system(size: TVOSDesign.Typography.callout, weight: .medium))
                         .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                     
-                    Text("Für Apple TV entwickelt")
+                    Text(L10n.About.developedForAppleTV)
                         .font(.system(size: TVOSDesign.Typography.footnote, weight: .regular))
                         .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                         .padding(.top, 4)
@@ -515,7 +704,7 @@ private struct AboutAppView: View {
     
     private var featuresSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            aboutSectionLabel(title: "FUNKTIONEN", icon: "sparkles")
+            aboutSectionLabel(title: L10n.About.features, icon: "sparkles")
             
             LazyVGrid(
                 columns: [
@@ -527,8 +716,8 @@ private struct AboutAppView: View {
             ) {
                 AboutFeatureCard(
                     icon: "doc.text.fill",
-                    title: "Reader-Modus",
-                    description: "Webseiten als lesbaren Text nativ darstellen",
+                    title: L10n.About.readerMode,
+                    description: L10n.About.readerModeDesc,
                     color: TVOSDesign.Colors.accentBlue,
                     isFocused: focusedItem == .featureCard(0)
                 )
@@ -536,8 +725,8 @@ private struct AboutAppView: View {
                 
                 AboutFeatureCard(
                     icon: "magnifyingglass",
-                    title: "Web-Suche",
-                    description: "Suche im Internet mit integrierten Ergebnissen",
+                    title: L10n.About.webSearch,
+                    description: L10n.About.webSearchDesc,
                     color: TVOSDesign.Colors.systemGreen,
                     isFocused: focusedItem == .featureCard(1)
                 )
@@ -545,8 +734,8 @@ private struct AboutAppView: View {
                 
                 AboutFeatureCard(
                     icon: "book.closed.fill",
-                    title: "Wikipedia",
-                    description: "Integrierte Wikipedia-Infos zu deiner Suche",
+                    title: L10n.About.wikipedia,
+                    description: L10n.About.wikipediaDesc,
                     color: TVOSDesign.Colors.systemIndigo,
                     isFocused: focusedItem == .featureCard(2)
                 )
@@ -554,8 +743,8 @@ private struct AboutAppView: View {
                 
                 AboutFeatureCard(
                     icon: "rectangle.stack",
-                    title: "Tab-Verwaltung",
-                    description: "Mehrere Tabs gleichzeitig öffnen und verwalten",
+                    title: L10n.About.tabManagement,
+                    description: L10n.About.tabManagementDesc,
                     color: TVOSDesign.Colors.systemOrange,
                     isFocused: focusedItem == .featureCard(3)
                 )
@@ -563,8 +752,8 @@ private struct AboutAppView: View {
                 
                 AboutFeatureCard(
                     icon: "photo.on.rectangle",
-                    title: "Bilder & Videos",
-                    description: "Bild- und Video-Ergebnisse in eigenen Tabs",
+                    title: L10n.About.imagesAndVideos,
+                    description: L10n.About.imagesAndVideosDesc,
                     color: TVOSDesign.Colors.systemPink,
                     isFocused: focusedItem == .featureCard(4)
                 )
@@ -572,8 +761,8 @@ private struct AboutAppView: View {
                 
                 AboutFeatureCard(
                     icon: "link",
-                    title: "Link-Navigation",
-                    description: "Navigiere über Links direkt in der Reader-Ansicht",
+                    title: L10n.About.linkNavigation,
+                    description: L10n.About.linkNavigationDesc,
                     color: TVOSDesign.Colors.systemTeal,
                     isFocused: focusedItem == .featureCard(5)
                 )
@@ -586,15 +775,15 @@ private struct AboutAppView: View {
     
     private var technicalSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            aboutSectionLabel(title: "TECHNISCHE DETAILS", icon: "cpu")
+            aboutSectionLabel(title: L10n.About.technicalDetails, icon: "cpu")
             
             VStack(spacing: 1) {
-                aboutInfoRow(label: "Plattform", value: "tvOS", icon: "tv")
-                aboutInfoRow(label: "Framework", value: "SwiftUI", icon: "swift")
-                aboutInfoRow(label: "Minimum tvOS", value: "17.0", icon: "gearshape.2")
-                aboutInfoRow(label: "Rendering", value: "Native SwiftUI", icon: "doc.text")
-                aboutInfoRow(label: "Datenspeicherung", value: "SwiftData (lokal)", icon: "internaldrive")
-                aboutInfoRow(label: "Cloud-Sync", value: "Deaktiviert", icon: "icloud.slash")
+                aboutInfoRow(label: L10n.About.platform, value: "tvOS", icon: "tv")
+                aboutInfoRow(label: L10n.About.framework, value: "SwiftUI", icon: "swift")
+                aboutInfoRow(label: L10n.About.minimumTvOS, value: "17.0", icon: "gearshape.2")
+                aboutInfoRow(label: L10n.About.rendering, value: L10n.About.nativeSwiftUI, icon: "doc.text")
+                aboutInfoRow(label: L10n.About.dataStorage, value: L10n.About.dataStorageValue, icon: "internaldrive")
+                aboutInfoRow(label: L10n.About.cloudSync, value: L10n.About.disabled, icon: "icloud.slash")
             }
             .clipShape(RoundedRectangle(cornerRadius: 20))
         }
@@ -626,20 +815,20 @@ private struct AboutAppView: View {
     
     private var legalSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            aboutSectionLabel(title: "RECHTLICHES", icon: "doc.text")
+            aboutSectionLabel(title: L10n.About.legal, icon: "doc.text")
             
             VStack(alignment: .leading, spacing: 12) {
-                Text("Diese App ist ein unabhängiges Projekt und steht in keiner Verbindung zu Apple Inc. Apple, Apple TV, tvOS und Safari sind eingetragene Marken der Apple Inc.")
+                Text(L10n.About.legalText1)
                     .font(.system(size: TVOSDesign.Typography.footnote, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                     .lineSpacing(4)
                 
-                Text("Suchergebnisse werden über externe APIs bereitgestellt. Wikipedia-Inhalte unterliegen der Creative Commons Lizenz (CC BY-SA 3.0).")
+                Text(L10n.About.legalText2)
                     .font(.system(size: TVOSDesign.Typography.footnote, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                     .lineSpacing(4)
                 
-                Text("© 2025 Mountain Browser")
+                Text(L10n.About.copyright)
                     .font(.system(size: TVOSDesign.Typography.caption, weight: .semibold))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                     .padding(.top, 8)
