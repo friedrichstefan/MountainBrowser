@@ -19,7 +19,7 @@ struct BrowserSettingsView: View {
     @State private var showAbout: Bool = false
     @State private var showPaywall: Bool = false
     @State private var showManageView: Bool = false
-    @State private var premiumManager = PremiumManager.shared
+    private var premiumManager: PremiumManager { PremiumManager.shared }
     
     enum SettingsItem: Hashable {
         case backButton
@@ -31,6 +31,7 @@ struct BrowserSettingsView: View {
         case wikipediaLanguage
         case premiumStatus
         case premiumUpgrade
+        case premiumManage
         case premiumRestore
         case premiumTheme
         case reset
@@ -693,7 +694,7 @@ struct BrowserSettingsView: View {
     }
     
     private var premiumManageRow: some View {
-        let isFocused = focusedItem == .premiumUpgrade
+        let isFocused = focusedItem == .premiumManage
         let subType = premiumManager.activeSubscriptionType
         
         // Detaillierten Subtitle erstellen
@@ -771,7 +772,7 @@ struct BrowserSettingsView: View {
             )
         }
         .buttonStyle(TransparentButtonStyle())
-        .focused($focusedItem, equals: .premiumUpgrade)
+        .focused($focusedItem, equals: .premiumManage)
         .scaleEffect(isFocused ? 1.02 : 1.0)
         .shadow(
             color: isFocused ? TVOSDesign.Colors.systemYellow.opacity(0.25) : Color.clear,
@@ -780,7 +781,7 @@ struct BrowserSettingsView: View {
         )
         .animation(TVOSDesign.Animation.focusSpring, value: isFocused)
     }
-    
+
     private var premiumRestoreRow: some View {
         let isFocused = focusedItem == .premiumRestore
         
@@ -1016,7 +1017,6 @@ private struct AboutAppView: View {
     
     private var aboutHeader: some View {
         VStack(spacing: 28) {
-            // Zurück
             HStack {
                 Button(action: { dismiss() }) {
                     HStack(spacing: 10) {
@@ -1053,7 +1053,6 @@ private struct AboutAppView: View {
                 Spacer()
             }
             
-            // App Icon + Name
             VStack(spacing: 20) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 36)

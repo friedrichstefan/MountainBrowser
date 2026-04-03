@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		3934A1B22F5EEC68003ABB57 /* Configuration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 3934A1B12F5EEC68003ABB57 /* Configuration.storekit */; };
+		394A173F2F800A81007442F7 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 394A173E2F800A81007442F7 /* StoreKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -43,6 +43,7 @@
 
 /* Begin PBXFileReference section */
 		3934A1B12F5EEC68003ABB57 /* Configuration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Configuration.storekit; sourceTree = "<group>"; };
+		394A173E2F800A81007442F7 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		39EC34792F3A03F400E89830 /* MountainBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MountainBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		39EC34882F3A03F800E89830 /* MountainBrowserTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MountainBrowserTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		39EC34922F3A03F800E89830 /* MountainBrowserUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MountainBrowserUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -84,6 +85,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				394A173F2F800A81007442F7 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -104,6 +106,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		394A173D2F800A81007442F7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				394A173E2F800A81007442F7 /* StoreKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		39EC34702F3A03F400E89830 = {
 			isa = PBXGroup;
 			children = (
@@ -111,6 +121,7 @@
 				39EC347B2F3A03F400E89830 /* MountainBrowser */,
 				39EC348B2F3A03F800E89830 /* MountainBrowserTests */,
 				39EC34952F3A03F800E89830 /* MountainBrowserUITests */,
+				394A173D2F800A81007442F7 /* Frameworks */,
 				39EC347A2F3A03F400E89830 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -258,7 +269,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3934A1B22F5EEC68003ABB57 /* Configuration.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -448,6 +458,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MountainBrowser/MountainBrowser.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = A4HCRKN53K;
@@ -477,6 +488,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = MountainBrowser/MountainBrowser.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = A4HCRKN53K;

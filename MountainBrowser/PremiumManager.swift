@@ -98,6 +98,8 @@ final class PremiumManager {
     var purchaseError: String?
     var isLoadingProducts: Bool = false
     var isPurchasing: Bool = false
+
+    private var transactionListenerTask: Task<Void, Never>?
     
     // MARK: - Daily Limits für Free-User
     private let maxFreeCursorMinutes: Int = 0  // Cursor nur für Premium
@@ -174,10 +176,13 @@ final class PremiumManager {
     
     private init() {
         loadDailyCounts()
-        
+
         Task {
             await loadProducts()
             await updateSubscriptionStatus()
+        }
+
+        transactionListenerTask = Task {
             await listenForTransactions()
         }
     }
@@ -232,7 +237,7 @@ final class PremiumManager {
                 logger.info("  → \(product.id): \(product.displayName) - \(product.displayPrice)")
             }
             
-            products = loadedProducts.sorted { ($0.price as NSDecimalNumber).doubleValue < ($1.price as NSDecimalNumber).doubleValue }
+            products = loadedProducts.sorted { $0.price < $1.price }
             
             if products.isEmpty {
                 logger.warning("⚠️ Keine Produkte gefunden! StoreKit-Konfiguration prüfen.")

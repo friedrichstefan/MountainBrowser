@@ -12,7 +12,7 @@ struct ImageResultGridView: View {
     let results: [SearchResult]
     let onSelect: (SearchResult) -> Void
     
-    @State private var premiumManager = PremiumManager.shared
+    private var premiumManager: PremiumManager { PremiumManager.shared }
     @State private var showPaywall: Bool = false
     
     private let columns = [

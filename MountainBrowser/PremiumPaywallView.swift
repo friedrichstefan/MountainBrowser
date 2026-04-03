@@ -12,7 +12,7 @@ struct PremiumPaywallView: View {
     let feature: PremiumManager.PremiumFeature
     @Binding var isPresented: Bool
     
-    @State private var premiumManager = PremiumManager.shared
+    private var premiumManager: PremiumManager { PremiumManager.shared }
     @FocusState private var focusedElement: PaywallFocus?
     
     enum PaywallFocus: Hashable {

@@ -53,7 +53,9 @@
           "familyShareable" : true,
           "groupNumber" : 1,
           "internalID" : "C78C1908",
-          "introductoryOffer" : null,
+          "introductoryOffers" : [
+
+          ],
           "localizations" : [
             {
               "description" : "Unlock cursor mode, unlimited image search and all premium features.",
@@ -84,9 +86,11 @@
           ],
           "displayPrice" : "11",
           "familyShareable" : true,
-          "groupNumber" : 1,
+          "groupNumber" : 2,
           "internalID" : "C81FF5F9",
-          "introductoryOffer" : null,
+          "introductoryOffers" : [
+
+          ],
           "localizations" : [
             {
               "description" : "Unlock cursor mode, unlimited image search and all premium features. Save with annual billing!",
@@ -112,7 +116,7 @@
     }
   ],
   "version" : {
-    "major" : 4,
+    "major" : 5,
     "minor" : 0
   }
 }
