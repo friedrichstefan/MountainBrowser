@@ -40,7 +40,7 @@ struct FullscreenImageViewer: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.accentBlue))
                                     .scaleEffect(2.0)
                                 
-                                Text("Bild wird geladen...")
+                                Text(L10n.ImageViewer.imageLoading)
                                     .font(.system(size: TVOSDesign.Typography.body, weight: .medium))
                                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                             }
@@ -52,11 +52,11 @@ struct FullscreenImageViewer: View {
                                     .font(.system(size: 80))
                                     .foregroundColor(TVOSDesign.Colors.systemRed)
                                 
-                                Text("Bild konnte nicht geladen werden")
+                                Text(L10n.ImageViewer.imageLoadFailed)
                                     .font(.system(size: TVOSDesign.Typography.body, weight: .medium))
                                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                                 
-                                Text("Überprüfen Sie Ihre Internetverbindung")
+                                Text(L10n.Network.checkNetworkConnection)
                                     .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
                                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                                     .multilineTextAlignment(.center)
@@ -202,7 +202,7 @@ struct FullscreenImageViewer: View {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 20, weight: .semibold))
-                        Text("Reset")
+                        Text(L10n.Settings.reset)
                             .font(.system(size: TVOSDesign.Typography.footnote, weight: .semibold))
                     }
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)

@@ -15,7 +15,7 @@ struct TVOSScrollIndicator: View {
     let isScrolling: Bool          // Zeigt an, ob gerade gescrollt wird
     
     @State private var isVisible: Bool = false
-    @State private var autoHideTimer: Timer?
+    @State private var autoHideTask: Task<Void, Never>?
     
     private var indicatorHeight: CGFloat {
         guard contentHeight > viewportHeight else { return 0 }
@@ -104,23 +104,25 @@ struct TVOSScrollIndicator: View {
                     showIndicator()
                 }
             }
-            // FIX: Timer aufräumen wenn View verschwindet
+            // FIX: Task aufräumen wenn View verschwindet
             .onDisappear {
-                autoHideTimer?.invalidate()
-                autoHideTimer = nil
+                autoHideTask?.cancel()
+                autoHideTask = nil
             }
         }
     }
     
     private func showIndicator() {
-        autoHideTimer?.invalidate()
-        autoHideTimer = nil
+        autoHideTask?.cancel()
+        autoHideTask = nil
         isVisible = true
     }
     
     private func scheduleAutoHide() {
-        autoHideTimer?.invalidate()
-        autoHideTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
+        autoHideTask?.cancel()
+        autoHideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000) // 2.5 seconds
+            guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.5)) {
                 isVisible = false
             }
@@ -137,7 +139,7 @@ class WebViewScrollTracker: ObservableObject {
     @Published var viewportHeight: Double = 0.0
     @Published var isScrolling: Bool = false
     
-    private var scrollTimer: Timer?
+    private var scrollHideTask: Task<Void, Never>?
     
     // FIX: Observer für StopAllTimers
     private var stopTimersObserver: NSObjectProtocol?
@@ -149,21 +151,16 @@ class WebViewScrollTracker: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.scrollTimer?.invalidate()
-            self?.scrollTimer = nil
-            self?.isScrolling = false
+            guard let self = self else { return }
+            Task { @MainActor [weak self] in
+                self?.scrollHideTask?.cancel()
+                self?.scrollHideTask = nil
+                self?.isScrolling = false
+            }
         }
     }
     
     func updateScrollPosition(_ position: Double, contentHeight: Double, viewportHeight: Double) {
-        // BEHOBEN: Threading-sichere Update-Funktion
-        guard Thread.isMainThread else {
-            DispatchQueue.main.async { [weak self] in
-                self?.updateScrollPosition(position, contentHeight: contentHeight, viewportHeight: viewportHeight)
-            }
-            return
-        }
-        
         // Scroll-Position normalisieren (0.0 - 1.0)
         let maxScroll = max(0, contentHeight - viewportHeight)
         let normalizedPosition = maxScroll > 0 ? min(1.0, max(0.0, position / maxScroll)) : 0.0
@@ -175,26 +172,16 @@ class WebViewScrollTracker: ObservableObject {
         // Scrolling-Status setzen
         setScrolling(true)
         
-        // BEHOBEN: Threading-sichere Timer-Verwaltung
-        scrollTimer?.invalidate()
-        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                self.setScrolling(false)
-            }
+        // Auto-hide nach Scroll-Ende
+        scrollHideTask?.cancel()
+        scrollHideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            guard !Task.isCancelled else { return }
+            self?.setScrolling(false)
         }
     }
     
     private func setScrolling(_ scrolling: Bool) {
-        // BEHOBEN: Threading-Check für Animation
-        guard Thread.isMainThread else {
-            DispatchQueue.main.async { [weak self] in
-                self?.setScrolling(scrolling)
-            }
-            return
-        }
-        
         withAnimation(.easeInOut(duration: 0.2)) {
             isScrolling = scrolling
         }
@@ -205,10 +192,7 @@ class WebViewScrollTracker: ObservableObject {
         if let observer = stopTimersObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        // BEHOBEN: Threading-sichere Cleanup
-        DispatchQueue.main.async { [weak scrollTimer] in
-            scrollTimer?.invalidate()
-        }
+        scrollHideTask?.cancel()
     }
 }
 

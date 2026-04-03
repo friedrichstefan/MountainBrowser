@@ -283,7 +283,8 @@ extension BrowserTab {
         
         do {
             let encoder = JSONEncoder()
-            self.wikipediaInfoData = try encoder.encode(info)
+            let data = try encoder.encode(info)
+            self.wikipediaInfoData = data
             self.hasWikipediaInfo = true
             // Cache invalidieren
             self._cachedWikipediaInfo = info
@@ -297,7 +298,8 @@ extension BrowserTab {
         guard let data = wikipediaInfoData else { return nil }
         do {
             let decoder = JSONDecoder()
-            return try decoder.decode(WikipediaInfo.self, from: data)
+            let info = try decoder.decode(WikipediaInfo.self, from: data)
+            return info
         } catch {
             return nil
         }

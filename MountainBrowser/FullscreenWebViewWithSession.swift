@@ -61,7 +61,7 @@ struct TextPreviewWebView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 22, weight: .semibold))
-                    Text("Zurück")
+                    Text(L10n.General.back)
                         .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
                 }
                 .foregroundColor(focusedButton == .close ? TVOSDesign.Colors.primaryLabel : TVOSDesign.Colors.secondaryLabel)
@@ -110,7 +110,7 @@ struct TextPreviewWebView: View {
                 .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.accentBlue))
                 .scaleEffect(2.5)
             
-            Text("Seite wird geladen...")
+            Text(L10n.Reader.pageLoading)
                 .font(.system(size: TVOSDesign.Typography.body, weight: .medium))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
             
@@ -141,7 +141,7 @@ struct TextPreviewWebView: View {
                         .font(.system(size: 22))
                         .foregroundColor(TVOSDesign.Colors.accentBlue)
                     
-                    Text("Textansicht — Für die vollständige Webseite öffne die URL auf einem anderen Gerät.")
+                    Text(L10n.TextPreview.disclaimer)
                         .font(.system(size: TVOSDesign.Typography.footnote, weight: .medium))
                         .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                 }
@@ -191,7 +191,7 @@ struct TextPreviewWebView: View {
             }
             
             VStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-                Text(pageTitle.isEmpty ? "Webseite" : pageTitle)
+                Text(pageTitle.isEmpty ? L10n.Reader.webpage : pageTitle)
                     .font(.system(size: TVOSDesign.Typography.title1, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                     .multilineTextAlignment(.center)
@@ -203,7 +203,7 @@ struct TextPreviewWebView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 800)
                 
-                Text("Webseiten können auf Apple TV nur als Text dargestellt werden.\nÖffne die URL auf einem iPhone, iPad oder Mac für die vollständige Ansicht.")
+                Text(L10n.TextPreview.fullWebsiteDisclaimer)
                     .font(.system(size: TVOSDesign.Typography.footnote, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                     .multilineTextAlignment(.center)
@@ -231,7 +231,7 @@ struct TextPreviewWebView: View {
                 .foregroundColor(TVOSDesign.Colors.systemOrange)
             
             VStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-                Text("Seite konnte nicht geladen werden")
+                Text(L10n.Reader.pageLoadFailed)
                     .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 
@@ -243,11 +243,11 @@ struct TextPreviewWebView: View {
             }
             
             HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-                TVOSButton(title: "Erneut versuchen", icon: "arrow.clockwise", style: .primary) {
+                TVOSButton(title: L10n.General.retry, icon: "arrow.clockwise", style: .primary) {
                     loadPageContent()
                 }
                 
-                TVOSButton(title: "Zurück", icon: "chevron.left", style: .secondary) {
+                TVOSButton(title: L10n.General.back, icon: "chevron.left", style: .secondary) {
                     isPresented = false
                 }
             }
@@ -261,7 +261,7 @@ struct TextPreviewWebView: View {
     
     private var actionButtons: some View {
         HStack(spacing: TVOSDesign.Spacing.elementSpacing) {
-            TVOSButton(title: "Zurück", icon: "chevron.left", style: .secondary) {
+            TVOSButton(title: L10n.General.back, icon: "chevron.left", style: .secondary) {
                 isPresented = false
             }
         }

@@ -8,6 +8,55 @@
 
 import SwiftUI
 
+// MARK: - Global Favicon Cache
+
+/// Actor-basierter Cache für Favicons — lädt jede Domain nur einmal
+actor FaviconCache {
+    static let shared = FaviconCache()
+    
+    private var cache: [String: UIImage] = [:]
+    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    
+    func favicon(for host: String) async -> UIImage? {
+        // 1. Bereits gecacht?
+        if let cached = cache[host] {
+            return cached
+        }
+        
+        // 2. Bereits ein Request unterwegs?
+        if let existing = inFlight[host] {
+            return await existing.value
+        }
+        
+        // 3. Neuen Request starten
+        let task = Task<UIImage?, Never> {
+            let url = URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=128")!
+            do {
+                let config = URLSessionConfiguration.default
+                config.timeoutIntervalForRequest = 5.0
+                let session = URLSession(configuration: config)
+                let (data, response) = try await session.data(from: url)
+                if let httpResponse = response as? HTTPURLResponse,
+                   httpResponse.statusCode == 200,
+                   let image = UIImage(data: data) {
+                    return image
+                }
+            } catch {}
+            return nil
+        }
+        
+        inFlight[host] = task
+        let result = await task.value
+        inFlight[host] = nil
+        
+        if let image = result {
+            cache[host] = image
+        }
+        
+        return result
+    }
+}
+
 struct SearchResultGridView: View {
     let results: [SearchResult]
     let onSelect: (SearchResult) -> Void
@@ -52,7 +101,7 @@ struct SearchResultGridView: View {
                         }
                         .zIndex(focusedIndex == index ? 1000 : 0)
                         .accessibilityLabel("\(result.title). \(result.description)")
-                        .accessibilityHint("Doppeltippen zum Öffnen")
+                        .accessibilityHint(L10n.Search.doubleTapToOpen)
                     }
                 }
                 .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
@@ -60,9 +109,9 @@ struct SearchResultGridView: View {
             }
             .padding(.top, TVOSDesign.Spacing.elementSpacing)
         }
-        .accessibilityLabel("Suchergebnisse")
+        .accessibilityLabel(L10n.Search.results)
     }
-    
+
     func resetScrollState() {
         hasScrolled = false
         onResetScroll?()
@@ -71,11 +120,11 @@ struct SearchResultGridView: View {
     private var resultsHeader: some View {
         HStack(alignment: .center, spacing: TVOSDesign.Spacing.elementSpacing) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Suchergebnisse")
+                Text(L10n.Search.results)
                     .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
-                
-                Text("\(results.count) Ergebnisse gefunden")
+
+                Text(L10n.Search.resultsFound(results.count))
                     .font(.system(size: TVOSDesign.Typography.subheadline, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
             }
@@ -83,7 +132,7 @@ struct SearchResultGridView: View {
             Spacer()
         }
         .padding(.horizontal, TVOSDesign.Spacing.safeAreaHorizontal)
-        .accessibilityLabel("\(results.count) Suchergebnisse gefunden")
+        .accessibilityLabel(L10n.Search.resultsFound(results.count))
     }
 }
 
@@ -97,15 +146,7 @@ struct ModernSearchCard: View {
     @FocusState private var isFocused: Bool
     @State private var isPressed: Bool = false
     @State private var faviconImage: UIImage? = nil
-    @State private var thumbnailImage: UIImage? = nil
-    @State private var loadingState: LoadingState = .loading
-    @State private var previewLoadAttempted: Bool = false
-    
-    enum LoadingState {
-        case loading
-        case loaded
-        case failed
-    }
+    @State private var faviconLoaded: Bool = false
     
     var body: some View {
         Button(action: {
@@ -140,7 +181,7 @@ struct ModernSearchCard: View {
     
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            thumbnailSection
+            heroSection
             contentSection
         }
         .frame(minHeight: TVOSDesign.Spacing.standardTouchTarget)
@@ -151,11 +192,9 @@ struct ModernSearchCard: View {
     
     private var cardBackground: some View {
         ZStack {
-            // Base blur background
             RoundedRectangle(cornerRadius: 20)
                 .fill(.ultraThinMaterial)
             
-            // Subtle gradient overlay
             RoundedRectangle(cornerRadius: 20)
                 .fill(
                     LinearGradient(
@@ -184,43 +223,58 @@ struct ModernSearchCard: View {
             )
     }
     
-    private var thumbnailSection: some View {
+    // MARK: - Hero Section (replaces slow thumbnail loading)
+    
+    private var heroSection: some View {
         ZStack {
-            // Gradient Background
+            // Domain-based gradient background — instant, no network
             LinearGradient(
                 colors: gradientColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             
-            switch loadingState {
-            case .loading:
-                SkeletonLoadingView()
-                
-            case .loaded:
-                if let thumbnail = thumbnailImage {
-                    Image(uiImage: thumbnail)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .transition(.opacity.combined(with: .scale(scale: 1.02)))
+            // Large centered icon + domain
+            VStack(spacing: 14) {
+                // Favicon or fallback icon
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 64, height: 64)
+                    
+                    if let favicon = faviconImage {
+                        Image(uiImage: favicon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 36, height: 36)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .transition(.opacity)
+                    } else {
+                        Image(systemName: iconForResult)
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundColor(.white.opacity(0.9))
+                    }
                 }
                 
-            case .failed:
-                FailedLoadPlaceholder(icon: iconForResult, domain: domainFromURL)
+                // Domain name
+                Text(domainFromURL)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
             }
             
-            // Dark gradient overlay for text readability
+            // Dark gradient overlay at bottom
             VStack {
                 Spacer()
                 LinearGradient(
-                    colors: [.clear, .black.opacity(0.7)],
+                    colors: [.clear, .black.opacity(0.5)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 60)
+                .frame(height: 50)
             }
             
-            // Domain badge
+            // Domain badge bottom-left
             VStack {
                 Spacer()
                 HStack {
@@ -240,9 +294,9 @@ struct ModernSearchCard: View {
             )
         )
         .onAppear {
-            if !previewLoadAttempted {
-                previewLoadAttempted = true
-                loadWebsitePreview()
+            if !faviconLoaded {
+                faviconLoaded = true
+                loadFavicon()
             }
         }
     }
@@ -286,88 +340,24 @@ struct ModernSearchCard: View {
         .frame(height: 150)
     }
     
-    // MARK: - Website Preview Loading
+    // MARK: - Favicon Loading (single fast request via cache)
     
-    private func loadWebsitePreview() {
-        guard let url = URL(string: result.url), let host = url.host else {
-            withAnimation(.easeInOut(duration: 0.4)) {
-                loadingState = .failed
-            }
-            return
-        }
+    private func loadFavicon() {
+        guard let url = URL(string: result.url), let host = url.host else { return }
+        let cleanHost = host.replacingOccurrences(of: "www.", with: "")
         
         Task {
-            async let thumbnailTask: Void = loadThumbnail(for: host)
-            async let faviconTask: Void = loadFavicon(for: host)
-            
-            _ = await (thumbnailTask, faviconTask)
-            
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    loadingState = thumbnailImage != nil ? .loaded : .failed
+            if let image = await FaviconCache.shared.favicon(for: cleanHost) {
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        self.faviconImage = image
+                    }
                 }
             }
         }
     }
     
-    private func loadThumbnail(for host: String) async {
-        let thumbnailServices = [
-            "https://image.thum.io/get/width/600/https://\(host)",
-            "https://s0.wp.com/mshots/v1/https://\(host)?w=600&h=400",
-            "https://free.pagepeeker.com/v2/thumbs.php?size=l&url=\(host)"
-        ]
-        
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 8.0
-        config.timeoutIntervalForResource = 15.0
-        let session = URLSession(configuration: config)
-        
-        for serviceURL in thumbnailServices {
-            if let url = URL(string: serviceURL) {
-                do {
-                    let (data, response) = try await session.data(from: url)
-                    if let httpResponse = response as? HTTPURLResponse,
-                       (200...299).contains(httpResponse.statusCode),
-                       let image = UIImage(data: data),
-                       image.size.width > 50 && image.size.height > 50 {
-                        await MainActor.run {
-                            self.thumbnailImage = image
-                        }
-                        return
-                    }
-                } catch {
-                    continue
-                }
-            }
-        }
-    }
-    
-    private func loadFavicon(for host: String) async {
-        let faviconURLs = [
-            "https://www.google.com/s2/favicons?domain=\(host)&sz=128",
-            "https://\(host)/apple-touch-icon.png",
-            "https://\(host)/favicon-32x32.png",
-            "https://\(host)/favicon.ico"
-        ]
-        
-        for faviconURLString in faviconURLs {
-            if let faviconURL = URL(string: faviconURLString) {
-                do {
-                    let (data, response) = try await URLSession.shared.data(from: faviconURL)
-                    if let httpResponse = response as? HTTPURLResponse,
-                       httpResponse.statusCode == 200,
-                       let image = UIImage(data: data) {
-                        await MainActor.run {
-                            self.faviconImage = image
-                        }
-                        return
-                    }
-                } catch {
-                    continue
-                }
-            }
-        }
-    }
+    // MARK: - Computed Properties
     
     private var gradientColors: [Color] {
         let domain = domainFromURL.lowercased()
@@ -379,7 +369,24 @@ struct ModernSearchCard: View {
         else if domain.contains("twitter") || domain.contains("x.com") { return [Color(hex: "1DA1F2"), Color(hex: "14171A")] }
         else if domain.contains("netflix") { return [Color(hex: "E50914"), Color(hex: "141414")] }
         else if domain.contains("amazon") { return [Color(hex: "FF9900"), Color(hex: "232F3E")] }
-        else { return [Color(hex: "667EEA"), Color(hex: "764BA2")] }
+        else if domain.contains("reddit") { return [Color(hex: "FF4500"), Color(hex: "1A1A1B")] }
+        else if domain.contains("stackoverflow") { return [Color(hex: "F48024"), Color(hex: "232629")] }
+        else if domain.contains("microsoft") { return [Color(hex: "00A4EF"), Color(hex: "737373")] }
+        else if domain.contains("facebook") || domain.contains("meta") { return [Color(hex: "1877F2"), Color(hex: "23272F")] }
+        else if domain.contains("instagram") { return [Color(hex: "E1306C"), Color(hex: "833AB4")] }
+        else if domain.contains("linkedin") { return [Color(hex: "0A66C2"), Color(hex: "004182")] }
+        else if domain.contains("lidl") { return [Color(hex: "0050AA"), Color(hex: "FFF000").opacity(0.6)] }
+        else if domain.contains("ebay") { return [Color(hex: "E53238"), Color(hex: "F5AF02")] }
+        else {
+            // Generate a stable color from the domain hash
+            let hash = abs(domain.hashValue)
+            let hue1 = Double(hash % 360) / 360.0
+            let hue2 = Double((hash / 360) % 360) / 360.0
+            return [
+                Color(hue: hue1, saturation: 0.5, brightness: 0.6),
+                Color(hue: hue2, saturation: 0.4, brightness: 0.3)
+            ]
+        }
     }
     
     private var iconForResult: String {
@@ -389,6 +396,11 @@ struct ModernSearchCard: View {
         else if domain.contains("youtube") { return "play.rectangle.fill" }
         else if domain.contains("github") { return "chevron.left.forwardslash.chevron.right" }
         else if domain.contains("apple") { return "apple.logo" }
+        else if domain.contains("amazon") || domain.contains("ebay") || domain.contains("lidl") { return "cart.fill" }
+        else if domain.contains("reddit") { return "bubble.left.and.bubble.right.fill" }
+        else if domain.contains("twitter") || domain.contains("x.com") { return "at" }
+        else if domain.contains("facebook") || domain.contains("instagram") { return "person.2.fill" }
+        else if domain.contains("linkedin") { return "briefcase.fill" }
         else { return "globe" }
     }
     
@@ -411,14 +423,11 @@ struct SkeletonLoadingView: View {
     
     var body: some View {
         ZStack {
-            // Base skeleton
             VStack(spacing: 16) {
-                // Icon placeholder
                 Circle()
                     .fill(Color.white.opacity(0.15))
                     .frame(width: 50, height: 50)
                 
-                // Text placeholders
                 VStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Color.white.opacity(0.12))
@@ -430,7 +439,6 @@ struct SkeletonLoadingView: View {
                 }
             }
             
-            // Shimmer effect
             GeometryReader { geometry in
                 Rectangle()
                     .fill(
@@ -468,14 +476,12 @@ struct FailedLoadPlaceholder: View {
     var body: some View {
         VStack(spacing: 16) {
             ZStack {
-                // Outer glow ring
                 Circle()
                     .stroke(Color.white.opacity(0.1), lineWidth: 2)
                     .frame(width: 70, height: 70)
                     .scaleEffect(pulseAnimation ? 1.1 : 1.0)
                     .opacity(pulseAnimation ? 0 : 1)
                 
-                // Icon circle
                 Circle()
                     .fill(
                         LinearGradient(
@@ -547,7 +553,7 @@ struct DomainBadge: View {
 struct OpenIndicator: View {
     var body: some View {
         HStack(spacing: 6) {
-            Text("Öffnen")
+            Text(L10n.General.open)
                 .font(.system(size: 14, weight: .semibold))
             
             Image(systemName: "arrow.right.circle.fill")
@@ -566,11 +572,11 @@ extension Color {
         Scanner(string: hex).scanHexInt64(&int)
         let a, r, g, b: UInt64
         switch hex.count {
-        case 3: // RGB (12-bit)
+        case 3:
             (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
+        case 6:
             (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
+        case 8:
             (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
         default:
             (a, r, g, b) = (255, 0, 0, 0)

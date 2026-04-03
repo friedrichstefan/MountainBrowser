@@ -39,13 +39,13 @@ struct TabGridView: View {
             .scrollClipDisabled()
         }
         .background(TVOSDesign.Colors.background)
-        .alert("Alle Tabs schließen?", isPresented: $showingCloseAllAlert) {
-            Button("Alle schließen", role: .destructive) {
+        .alert(L10n.TabActions.closeAllTabs, isPresented: $showingCloseAllAlert) {
+            Button(L10n.TabActions.closeAll, role: .destructive) {
                 tabManager.closeAllTabs()
             }
-            Button("Abbrechen", role: .cancel) { }
+            Button(L10n.General.cancel, role: .cancel) { }
         } message: {
-            Text("Dadurch werden alle offenen Tabs geschlossen und ein neuer leerer Tab erstellt.")
+            Text(L10n.TabActions.closeAllMessage)
         }
     }
     
@@ -54,11 +54,11 @@ struct TabGridView: View {
     private var toolbarSection: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Tabs")
+                Text(L10n.General.tabs)
                     .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
-                
-                Text("\(tabManager.tabsCount) \(tabManager.tabsCount == 1 ? "Tab" : "Tabs")")
+
+                Text("\(tabManager.tabsCount) \(tabManager.tabsCount == 1 ? L10n.Tabs.tab : L10n.Tabs.tabs)")
                     .font(.system(size: TVOSDesign.Typography.callout))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
             }
@@ -122,11 +122,11 @@ struct TabGridView: View {
                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
             
             VStack(spacing: 12) {
-                Text("Keine Tabs geöffnet")
+                Text(L10n.Tabs.noTabsOpen)
                     .font(.system(size: TVOSDesign.Typography.title2, weight: .bold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
-                
-                Text("Erstelle einen neuen Tab, um mit dem Browsing zu beginnen")
+
+                Text(L10n.Tabs.createNewTabToStart)
                     .font(.system(size: TVOSDesign.Typography.body))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                     .multilineTextAlignment(.center)
@@ -155,7 +155,7 @@ struct NewTabButton: View {
                     .font(.system(size: 32, weight: .light))
                     .foregroundColor(isFocused ? .white : TVOSDesign.Colors.accentBlue)
                 
-                Text("Neuer Tab")
+                Text(L10n.General.newTab)
                     .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
                     .foregroundColor(isFocused ? .white : TVOSDesign.Colors.primaryLabel)
             }

@@ -114,6 +114,10 @@ class TVOSWebViewHostController: UIViewController {
     // Scroll-Geschwindigkeit - kleinerer Wert = langsameres Scrollen
     private let scrollSpeed: CGFloat = 1.5
     
+    /// JavaScript that prevents the internal UIWebView video player from going fullscreen.
+    /// The crash happens because WebAVPlayerViewController on tvOS receives nil objects.
+    private static let videoFullscreenPreventionJS = ScrollWebViewRepresentable.videoFullscreenPreventionJS
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
@@ -239,6 +243,36 @@ class TVOSWebViewHostController: UIViewController {
         onDoubleTap?()
     }
     
+    // MARK: - Media Settings Configuration
+    
+    /// Configures UIWebView media settings to force inline playback and prevent
+    /// the native fullscreen video player from launching (which crashes on tvOS).
+    private func configureWebViewMediaSettings(_ webView: UIView) {
+        let allowsInlineMediaPlayback = NSSelectorFromString("setAllowsInlineMediaPlayback:")
+        if webView.responds(to: allowsInlineMediaPlayback) {
+            webView.perform(allowsInlineMediaPlayback, with: true as NSNumber)
+        }
+        
+        let mediaPlaybackRequiresUserAction = NSSelectorFromString("setMediaPlaybackRequiresUserAction:")
+        if webView.responds(to: mediaPlaybackRequiresUserAction) {
+            webView.perform(mediaPlaybackRequiresUserAction, with: false as NSNumber)
+        }
+        
+        let mediaPlaybackAllowsAirPlay = NSSelectorFromString("setMediaPlaybackAllowsAirPlay:")
+        if webView.responds(to: mediaPlaybackAllowsAirPlay) {
+            webView.perform(mediaPlaybackAllowsAirPlay, with: false as NSNumber)
+        }
+    }
+    
+    /// Injects the video fullscreen prevention JavaScript into the web view.
+    private func injectVideoFullscreenPrevention() {
+        guard let webView = webView else { return }
+        let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+        if webView.responds(to: jsSelector) {
+            webView.perform(jsSelector, with: TVOSWebViewHostController.videoFullscreenPreventionJS)
+        }
+    }
+    
     // MARK: - WebView Setup
     
     private func setupWebView() {
@@ -254,6 +288,10 @@ class TVOSWebViewHostController: UIViewController {
         webView.isUserInteractionEnabled = false
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         webView.frame = view.bounds
+        
+        // FIX: Configure media settings to force inline playback and prevent
+        // the WebAVPlayerViewController crash on tvOS
+        configureWebViewMediaSettings(webView)
         
         view.addSubview(webView)
         self.webView = webView
@@ -347,11 +385,17 @@ class TVOSWebViewHostController: UIViewController {
     
     @objc func webViewDidStartLoad(_ webView: UIView) {
         // FIX: Immer auf Main Thread ausführen
+        let notify = { [weak self] in
+            self?.coordinator?.webViewDidStartLoad()
+            // FIX: Inject video prevention as early as possible
+            self?.injectVideoFullscreenPrevention()
+        }
+        
         if Thread.isMainThread {
-            coordinator?.webViewDidStartLoad()
+            notify()
         } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.coordinator?.webViewDidStartLoad()
+            DispatchQueue.main.async {
+                notify()
             }
         }
     }
@@ -382,6 +426,9 @@ class TVOSWebViewHostController: UIViewController {
             
             self.externalWebViewController?.webView = webView
             self.coordinator?.webViewDidFinishLoad(canGoBack: canGoBack, canGoForward: canGoForward, pageTitle: pageTitle, currentURL: currentURL)
+            
+            // FIX: Re-inject video fullscreen prevention after page finishes loading
+            self.injectVideoFullscreenPrevention()
         }
         
         if Thread.isMainThread {
@@ -405,6 +452,10 @@ class TVOSWebViewHostController: UIViewController {
     }
     
     @objc func webView(_ webView: UIView, shouldStartLoadWith request: URLRequest, navigationType: Int) -> Bool {
+        // FIX: Inject video prevention early on each navigation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.injectVideoFullscreenPrevention()
+        }
         return true
     }
     

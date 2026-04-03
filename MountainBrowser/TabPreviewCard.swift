@@ -14,6 +14,7 @@ struct TabPreviewCard: View {
     
     @FocusState private var isFocused: Bool
     @State private var isPressed: Bool = false
+    @State private var faviconImage: UIImage? = nil
     
     // MARK: - Constants
     
@@ -38,12 +39,13 @@ struct TabPreviewCard: View {
                 closeButton
             }
         }
-        .focusable(true) { isFocused in
+        .focusable(true)
+        .focused($isFocused)
+        .onChange(of: isFocused) { _, newValue in
             withAnimation(TVOSDesign.Animation.focusSpring) {
-                self.isFocused = isFocused
+                // Focus state is already tracked by @FocusState
             }
         }
-        .focused($isFocused)
         // Tap auf Select-Taste der Siri Remote
         .onTapGesture {
             withAnimation(TVOSDesign.Animation.pressSpring) {
@@ -63,6 +65,9 @@ struct TabPreviewCard: View {
         // Glow-Effekt für große Kacheln — kein Ring
         .tvOSCardGlow(isFocused: isFocused, isPressed: isPressed)
         .zIndex(isFocused ? 100 : 0)
+        .onAppear {
+            loadFavicon()
+        }
     }
     
     // MARK: - Main Card Content
@@ -99,78 +104,44 @@ struct TabPreviewCard: View {
         )
     }
     
+    /// Fast gradient + favicon placeholder instead of slow thum.io screenshot
     private var webPagePlaceholder: some View {
         ZStack {
-            // Website-Screenshot Thumbnail via API
-            if let thumbnailURL = websiteThumbnailURL {
-                AsyncImage(url: thumbnailURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .failure(_):
-                        fallbackPlaceholder
-                    case .empty:
-                        ZStack {
-                            fallbackPlaceholder
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        }
-                    @unknown default:
-                        fallbackPlaceholder
-                    }
-                }
-            } else {
-                fallbackPlaceholder
-            }
-        }
-    }
-    
-    private var fallbackPlaceholder: some View {
-        ZStack {
+            // Domain-based gradient — instant rendering, no network
             LinearGradient(
-                colors: [TVOSDesign.Colors.accentBlue.opacity(0.3), TVOSDesign.Colors.systemPurple.opacity(0.2)],
+                colors: gradientColorsForTab,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             
             VStack(spacing: 12) {
-                Image(systemName: "globe")
-                    .font(.system(size: 40, weight: .light))
-                    .foregroundColor(.white.opacity(0.8))
-                
-                Text("Webseite")
-                    .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
-                    .foregroundColor(.white)
+                // Favicon or fallback icon
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 52, height: 52)
+                    
+                    if let favicon = faviconImage {
+                        Image(uiImage: favicon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 28, height: 28)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } else {
+                        Image(systemName: "globe")
+                            .font(.system(size: 24, weight: .light))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                }
                 
                 if !tab.urlString.isEmpty {
                     Text(shortURL)
-                        .font(.system(size: TVOSDesign.Typography.caption))
+                        .font(.system(size: TVOSDesign.Typography.caption, weight: .medium))
                         .foregroundColor(.white.opacity(0.7))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
                 }
             }
         }
-    }
-    
-    /// Generiert eine Thumbnail-URL für die Website-Vorschau
-    private var websiteThumbnailURL: URL? {
-        guard !tab.urlString.isEmpty,
-              let encodedURL = tab.urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            return nil
-        }
-        
-        // Verwende microlink.io Screenshot-Service (kostenlos, keine API-Key nötig)
-        // Alternative: screenshot.abstractapi.com, urlbox.io
-        let thumbnailURLString = "https://api.microlink.io/?url=\(encodedURL)&screenshot=true&meta=false&embed=screenshot.url"
-        
-        // Einfachere Alternative: Google PageSpeed Insights Thumbnail
-        // Oder: thumbsnap.com
-        let simpleThumbURL = "https://image.thum.io/get/width/\(Int(cardWidth * 2))/\(tab.urlString)"
-        
-        return URL(string: simpleThumbURL)
     }
     
     private var blankTabPlaceholder: some View {
@@ -186,7 +157,7 @@ struct TabPreviewCard: View {
                     .font(.system(size: 40, weight: .light))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                 
-                Text("Neuer Tab")
+                Text(L10n.General.newTab)
                     .font(.system(size: TVOSDesign.Typography.callout, weight: .semibold))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
             }
@@ -239,7 +210,12 @@ struct TabPreviewCard: View {
     
     private var faviconView: some View {
         Group {
-            if let faviconURL = tab.faviconURL, !faviconURL.isEmpty {
+            if let favicon = faviconImage {
+                Image(uiImage: favicon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else if let faviconURL = tab.faviconURL, !faviconURL.isEmpty {
                 AsyncImage(url: URL(string: faviconURL)) { image in
                     image
                         .resizable()
@@ -288,11 +264,56 @@ struct TabPreviewCard: View {
         .allowsHitTesting(false)
     }
     
+    // MARK: - Favicon Loading
+    
+    private func loadFavicon() {
+        guard !tab.isBlank,
+              let url = URL(string: tab.urlString),
+              let host = url.host else { return }
+        let cleanHost = host.replacingOccurrences(of: "www.", with: "")
+        
+        Task {
+            if let image = await FaviconCache.shared.favicon(for: cleanHost) {
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        self.faviconImage = image
+                    }
+                }
+            }
+        }
+    }
+    
     // MARK: - Computed Properties
     
     private var shortURL: String {
         guard let url = URL(string: tab.urlString) else { return tab.urlString }
         return url.host ?? tab.urlString
+    }
+    
+    /// Generates stable gradient colors from the domain — no network needed
+    private var gradientColorsForTab: [Color] {
+        guard let url = URL(string: tab.urlString),
+              let host = url.host else {
+            return [Color(hex: "667EEA"), Color(hex: "764BA2")]
+        }
+        let domain = host.replacingOccurrences(of: "www.", with: "").lowercased()
+        
+        // Known brands
+        if domain.contains("google") { return [Color(hex: "4285F4"), Color(hex: "34A853")] }
+        else if domain.contains("youtube") { return [Color(hex: "FF0000"), Color(hex: "282828")] }
+        else if domain.contains("wikipedia") { return [Color(hex: "636466"), Color(hex: "1A1A1A")] }
+        else if domain.contains("github") { return [Color(hex: "24292E"), Color(hex: "0D1117")] }
+        else if domain.contains("apple") { return [Color(hex: "555555"), Color(hex: "1D1D1F")] }
+        else {
+            // Stable hash-based color
+            let hash = abs(domain.hashValue)
+            let hue1 = Double(hash % 360) / 360.0
+            let hue2 = Double((hash / 360) % 360) / 360.0
+            return [
+                Color(hue: hue1, saturation: 0.5, brightness: 0.6),
+                Color(hue: hue2, saturation: 0.4, brightness: 0.3)
+            ]
+        }
     }
 }
 

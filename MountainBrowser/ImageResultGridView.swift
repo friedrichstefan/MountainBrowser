@@ -34,7 +34,7 @@ struct ImageResultGridView: View {
                 .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom + 100)
             }
         }
-        .accessibilityLabel("Bildsuchergebnisse")
+        .accessibilityLabel(L10n.Search.imageResults)
     }
 }
 
@@ -91,12 +91,12 @@ struct ModernImageEmptyStateView: View {
             }
             
             VStack(spacing: 16) {
-                Text("Keine Bilder gefunden")
+                Text(L10n.ImageResults.noImages)
                     .font(.system(size: 32, weight: .semibold, design: .rounded))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                     .multilineTextAlignment(.center)
-                
-                Text("Für diese Suchanfrage wurden keine Bilder gefunden.\nVersuchen Sie es mit anderen Suchbegriffen.")
+
+                Text(L10n.ImageResults.noImagesMessage)
                     .font(.system(size: 22, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                     .multilineTextAlignment(.center)
@@ -106,8 +106,8 @@ struct ModernImageEmptyStateView: View {
             
             // Suggestion pills
             HStack(spacing: 16) {
-                SuggestionPill(text: "Andere Suchbegriffe", icon: "magnifyingglass")
-                SuggestionPill(text: "Tab wechseln", icon: "rectangle.stack")
+                SuggestionPill(text: L10n.Suggestions.otherSearchTerms, icon: "magnifyingglass")
+                SuggestionPill(text: L10n.Suggestions.switchTab, icon: "rectangle.stack")
             }
             .padding(.top, 16)
             
@@ -409,7 +409,7 @@ struct ImageFailedPlaceholder: View {
                     .foregroundColor(.white.opacity(0.6))
             }
             
-            Text("Bild nicht verfügbar")
+            Text(L10n.ImageResults.imageUnavailable)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
         }

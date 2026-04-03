@@ -48,6 +48,9 @@ extension TabManager {
         let urlValidator = URLValidator()
         let sanitizedQuery = await urlValidator.sanitizeSearchQuery(query)
         
+        // Capture the value before entering closures to avoid actor isolation issues
+        let youTubeConfigured = APIConfiguration.isYouTubeConfigured
+        
         // Parallele Suche für alle Content-Types
         async let webSearchTask: [SearchResult] = {
             do {
@@ -66,7 +69,7 @@ extension TabManager {
         }()
         
         async let videoSearchTask: [SearchResult] = {
-            if APIConfiguration.isYouTubeConfigured {
+            if youTubeConfigured {
                 do {
                     return try await searchService.searchVideos(query: sanitizedQuery)
                 } catch {
@@ -101,9 +104,9 @@ extension TabManager {
         
         // Tab-Titel aktualisieren
         if !webResults.isEmpty || !images.isEmpty || !videos.isEmpty {
-            tab.title = "Suche: \(sanitizedQuery)"
+            tab.title = L10n.Search.searchPrefix(sanitizedQuery)
         } else {
-            tab.title = "Keine Ergebnisse: \(sanitizedQuery)"
+            tab.title = L10n.Search.noResultsPrefix(sanitizedQuery)
         }
         
         saveContext()
@@ -308,7 +311,7 @@ final class TabManager: ObservableObject {
         guard let index = tabs.firstIndex(of: tab) else { return }
         
         let wasActive = tab.isActive
-        let tabTitle = tab.displayTitle // FIX: Titel vor dem Löschen speichern
+        _ = tab.displayTitle // FIX: Titel vor dem Löschen speichern
         
         tabs.remove(at: index)
         

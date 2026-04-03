@@ -7,6 +7,10 @@
 //
 
 import SwiftUI
+import os.log
+
+// MARK: - Debug Logger
+private let scrollWebViewLogger = Logger(subsystem: "MountainBrowser", category: "ScrollModeWebView")
 
 struct ScrollModeWebView: View {
     @Binding var url: URL?
@@ -16,13 +20,19 @@ struct ScrollModeWebView: View {
     @State private var title: String = ""
     @State private var webViewRef: UIView?
     
+    // FIX: Texteingabe-Sheet für Formulare (wie im Cursor-Modus)
+    @State private var showTextInputSheet: Bool = false
+    @State private var textInputValue: String = ""
+    @State private var textInputPrompt: String = L10n.Browser.enterText
+    @State private var pendingInputElementId: String? = nil
+    
     let preferences: BrowserPreferences
     let onNavigationAction: (URLRequest) -> Bool
     let onBack: () -> Void
     var onPlayPause: (() -> Void)? = nil
     
     private var pageTitle: String {
-        title.isEmpty ? "Laden..." : title
+        title.isEmpty ? L10n.General.loading : title
     }
     
     private var urlString: String {
@@ -50,7 +60,11 @@ struct ScrollModeWebView: View {
                     webViewRef: $webViewRef,
                     preferences: preferences,
                     onNavigationAction: onNavigationAction,
-                    onPlayPause: onPlayPause
+                    onPlayPause: onPlayPause,
+                    onTextInputRequired: { elementId, placeholder in
+                        scrollWebViewLogger.info("📝 onTextInputRequired aufgerufen: id='\(elementId)', placeholder='\(placeholder)'")
+                        handleTextInputRequest(elementId: elementId, placeholder: placeholder)
+                    }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
@@ -60,6 +74,25 @@ struct ScrollModeWebView: View {
         .ignoresSafeArea(.all, edges: .all)
         .onExitCommand {
             handleBackNavigation()
+        }
+        // FIX: Text-Input-Sheet auch im Scroll-Modus
+        .fullScreenCover(isPresented: $showTextInputSheet) {
+            WebViewTextInputSheet(
+                isPresented: $showTextInputSheet,
+                textValue: $textInputValue,
+                prompt: textInputPrompt,
+                onSubmit: {
+                    scrollWebViewLogger.info("✅ Text-Input Submit: '\(textInputValue)' für Element: '\(pendingInputElementId ?? "nil")'")
+                    submitTextInput()
+                    showTextInputSheet = false
+                },
+                onCancel: {
+                    scrollWebViewLogger.info("❌ Text-Input abgebrochen")
+                    textInputValue = ""
+                    pendingInputElementId = nil
+                    showTextInputSheet = false
+                }
+            )
         }
     }
     
@@ -81,6 +114,173 @@ struct ScrollModeWebView: View {
             onBack()
         }
     }
+    
+    // MARK: - Text Input Handling
+    
+    private func handleTextInputRequest(elementId: String, placeholder: String) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.handleTextInputRequest(elementId: elementId, placeholder: placeholder)
+            }
+            return
+        }
+        
+        scrollWebViewLogger.info("🔧 handleTextInputRequest: elementId='\(elementId)', placeholder='\(placeholder)', showTextInputSheet vorher=\(showTextInputSheet)")
+        
+        pendingInputElementId = elementId
+        textInputPrompt = placeholder.isEmpty ? L10n.Browser.enterText : placeholder
+        textInputValue = ""
+        
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            scrollWebViewLogger.info("🎬 Setze showTextInputSheet = true")
+            showTextInputSheet = true
+        }
+    }
+    
+    private func submitTextInput() {
+        guard let webView = webViewRef else {
+            scrollWebViewLogger.error("❌ submitTextInput: webViewRef ist nil!")
+            return
+        }
+        
+        scrollWebViewLogger.info("📤 submitTextInput: Text='\(textInputValue)', ElementId='\(pendingInputElementId ?? "nil")'")
+        
+        let escapedValue = textInputValue
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        
+        let script: String
+        if let elementId = pendingInputElementId, !elementId.isEmpty {
+            script = """
+                (function() {
+                    console.log('tvOS: submitTextInput mit elementId: \(elementId)');
+                    var element = document.getElementById('\(elementId)');
+                    if (!element) { console.log('tvOS: getElementById fehlgeschlagen, versuche name...'); element = document.querySelector('input[name="\(elementId)"]'); }
+                    if (!element) { console.log('tvOS: name fehlgeschlagen, versuche aria-label...'); element = document.querySelector('[aria-label="\(elementId)"]'); }
+                    if (!element) {
+                        console.log('tvOS: Alle ID-Selektoren fehlgeschlagen, versuche activeElement...');
+                        element = document.activeElement;
+                        if (!element || (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA')) {
+                            console.log('tvOS: activeElement ist kein Input (' + (element ? element.tagName : 'null') + '), versuche breite Suche...');
+                            element = document.querySelector('input[type="text"], input[type="search"], input:not([type]), textarea, [contenteditable="true"]');
+                        }
+                    }
+                    if (element) {
+                        console.log('tvOS: Element gefunden: ' + element.tagName + '#' + element.id + ' name=' + element.name + ' type=' + element.type);
+                        element.focus();
+                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                        if (!nativeSetter) nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+                        if (nativeSetter && nativeSetter.set) {
+                            console.log('tvOS: Verwende nativeInputValueSetter');
+                            nativeSetter.set.call(element, '\(escapedValue)');
+                        } else {
+                            console.log('tvOS: nativeInputValueSetter nicht verfügbar, verwende element.value');
+                            element.value = '\(escapedValue)';
+                        }
+                        console.log('tvOS: Wert gesetzt, dispatche Events...');
+                        element.dispatchEvent(new Event('focus', { bubbles: true }));
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                        element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+                        element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+                        console.log('tvOS: Element.value nach Setzen: "' + element.value + '"');
+                        var form = element.closest('form');
+                        if (form) {
+                            console.log('tvOS: Form gefunden, suche Submit-Button...');
+                            var submitBtn = form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+                            if (submitBtn) {
+                                console.log('tvOS: Submit-Button gefunden: ' + submitBtn.tagName + '#' + submitBtn.id + ', klicke...');
+                                submitBtn.click();
+                            } else {
+                                console.log('tvOS: Kein Submit-Button gefunden, dispatche submit Event...');
+                                form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                            }
+                        } else {
+                            console.log('tvOS: Kein Form-Element gefunden!');
+                        }
+                        return 'success:' + element.tagName + '#' + (element.id || element.name || '?');
+                    }
+                    console.log('tvOS: KEIN Element gefunden!');
+                    return 'element_not_found';
+                })();
+            """
+        } else {
+            script = """
+                (function() {
+                    console.log('tvOS: submitTextInput OHNE elementId');
+                    var element = document.activeElement;
+                    console.log('tvOS: activeElement: ' + (element ? element.tagName + '#' + element.id + ' type=' + element.type : 'null'));
+                    if (!element || (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA')) {
+                        var selectors = [
+                            'input[type="search"]', 'input[type="text"]',
+                            'input[name*="search"]', 'input[name*="query"]', 'input[name*="keyword"]', 'input[name*="field"]',
+                            'input[aria-label*="search" i]', 'input[aria-label*="such" i]',
+                            'input[placeholder*="search" i]', 'input[placeholder*="such" i]',
+                            'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])',
+                            'textarea', '[contenteditable="true"]'
+                        ];
+                        for (var i = 0; i < selectors.length; i++) {
+                            element = document.querySelector(selectors[i]);
+                            if (element && element.offsetParent !== null) {
+                                console.log('tvOS: Element via Selektor ' + i + ' gefunden: ' + element.tagName + '#' + element.id);
+                                break;
+                            }
+                            element = null;
+                        }
+                    }
+                    if (element) {
+                        console.log('tvOS: Finales Element: ' + element.tagName + '#' + element.id + ' name=' + element.name);
+                        element.focus();
+                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                        if (!nativeSetter) nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+                        if (nativeSetter && nativeSetter.set) {
+                            nativeSetter.set.call(element, '\(escapedValue)');
+                        } else {
+                            element.value = '\(escapedValue)';
+                        }
+                        element.dispatchEvent(new Event('focus', { bubbles: true }));
+                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                        element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+                        element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+                        console.log('tvOS: Element.value nach Setzen: "' + element.value + '"');
+                        var form = element.closest('form');
+                        if (form) {
+                            var submitBtn = form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+                            if (submitBtn) { console.log('tvOS: Submit via Button'); submitBtn.click(); }
+                            else { console.log('tvOS: Submit via Event'); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }
+                        } else {
+                            console.log('tvOS: Kein Form gefunden');
+                        }
+                        return 'success:' + element.tagName + '#' + (element.id || element.name || '?');
+                    }
+                    console.log('tvOS: KEIN Element gefunden! Alle Selektoren fehlgeschlagen.');
+                    // Debug: Liste alle sichtbaren Inputs auf der Seite
+                    var allInputs = document.querySelectorAll('input, textarea');
+                    console.log('tvOS: Gesamt-Inputs auf Seite: ' + allInputs.length);
+                    for (var j = 0; j < Math.min(allInputs.length, 10); j++) {
+                        var inp = allInputs[j];
+                        console.log('  Input ' + j + ': ' + inp.tagName + ' type=' + inp.type + ' id=' + inp.id + ' name=' + inp.name + ' visible=' + (inp.offsetParent !== null));
+                    }
+                    return 'element_not_found';
+                })();
+            """
+        }
+        
+        let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+        if webView.responds(to: jsSelector) {
+            let result = webView.perform(jsSelector, with: script)?.takeUnretainedValue() as? String
+            scrollWebViewLogger.info("📋 JavaScript Ergebnis: '\(result ?? "nil")'")
+        } else {
+            scrollWebViewLogger.error("❌ WebView responds nicht auf stringByEvaluatingJavaScriptFromString!")
+        }
+        
+        textInputValue = ""
+        pendingInputElementId = nil
+    }
 }
 
 // MARK: - UIViewRepresentable für Scroll-Modus
@@ -96,10 +296,11 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
     let preferences: BrowserPreferences
     let onNavigationAction: (URLRequest) -> Bool
     var onPlayPause: (() -> Void)? = nil
+    var onTextInputRequired: ((String, String) -> Void)? = nil
     
     /// JavaScript das den internen UIWebView Video-Player verhindert.
     /// Der Crash passiert weil WebAVPlayerViewController auf tvOS nil-Objekte bekommt.
-    private static let videoFullscreenPreventionJS = """
+    static let videoFullscreenPreventionJS = """
         (function() {
             var style = document.createElement('style');
             style.textContent = 'video::-webkit-media-controls-fullscreen-button { display: none !important; }';
@@ -153,6 +354,39 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
         })();
     """
     
+    /// JavaScript zur Textfeld-Erkennung bei Fokus-Änderungen
+    private static let textFieldDetectionJS = """
+        (function() {
+            if (window._tvosTextFieldDetectionInstalled) return 'already_installed';
+            window._tvosTextFieldDetectionInstalled = true;
+            
+            document.addEventListener('focusin', function(e) {
+                var el = e.target;
+                var tag = el.tagName;
+                var inputType = (el.type || '').toLowerCase();
+                
+                console.log('tvOS focusin: ' + tag + '#' + el.id + ' type=' + inputType + ' name=' + el.name);
+                
+                var isTextField = (
+                    (tag === 'INPUT' &&
+                     ['text', 'search', 'email', 'url', 'tel', 'password', 'number', ''].includes(inputType) &&
+                     inputType !== 'hidden' && inputType !== 'submit' && inputType !== 'button' &&
+                     inputType !== 'checkbox' && inputType !== 'radio')
+                ) || tag === 'TEXTAREA' || el.isContentEditable;
+                
+                console.log('tvOS: isTextField = ' + isTextField);
+                
+                if (isTextField) {
+                    window._tvosLastFocusedInputId = el.id || el.name || '';
+                    window._tvosLastFocusedInputPlaceholder = el.placeholder || el.getAttribute('aria-label') || el.title || '';
+                    console.log('tvOS: Textfeld gespeichert: id="' + window._tvosLastFocusedInputId + '" placeholder="' + window._tvosLastFocusedInputPlaceholder + '"');
+                }
+            }, true);
+            
+            return 'textfield_detection_installed';
+        })();
+    """
+    
     func makeUIView(context: Context) -> ScrollWebViewContainer {
         let userAgent = preferences.userAgent.isEmpty
             ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Safari/605.1.15"
@@ -175,6 +409,11 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
         let coordinator = context.coordinator
         containerView.onPlayPause = { [weak coordinator] in
             coordinator?.parent.onPlayPause?()
+        }
+        // FIX: Textfeld-Erkennung bei Select-Taste im Scroll-Modus
+        containerView.onSelect = { [weak coordinator] in
+            scrollWebViewLogger.info("🖱️ onSelect aufgerufen (Select-Taste gedrückt)")
+            coordinator?.checkForTextFieldFocus()
         }
         containerView.backgroundColor = .black
         containerView.clipsToBounds = true
@@ -281,6 +520,10 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
         containerView.onPlayPause = { [weak coordinator] in
             coordinator?.parent.onPlayPause?()
         }
+        containerView.onSelect = { [weak coordinator] in
+            scrollWebViewLogger.info("🖱️ onSelect aufgerufen (updateUIView)")
+            coordinator?.checkForTextFieldFocus()
+        }
         
         guard let webView = context.coordinator.webView else { return }
         
@@ -372,10 +615,102 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
             parent.onPlayPause?()
         }
         
+        // MARK: - Text Field Focus Detection
+        
+        /// Prüft ob gerade ein Textfeld fokussiert ist und öffnet das Eingabe-Sheet
+        func checkForTextFieldFocus() {
+            guard let webView = webView else {
+                scrollWebViewLogger.error("❌ checkForTextFieldFocus: webView ist nil!")
+                return
+            }
+            
+            scrollWebViewLogger.info("🔍 checkForTextFieldFocus: Prüfe document.activeElement...")
+            
+            let script = """
+                (function() {
+                    var el = document.activeElement;
+                    console.log('tvOS checkFocus: activeElement = ' + (el ? el.tagName + '#' + el.id + ' type=' + (el.type||'') + ' name=' + (el.name||'') : 'null'));
+                    if (!el) return JSON.stringify({ type: 'none' });
+                    var tag = el.tagName;
+                    var inputType = (el.type || '').toLowerCase();
+                    var isTextField = (
+                        (tag === 'INPUT' &&
+                         ['text', 'search', 'email', 'url', 'tel', 'password', 'number', ''].includes(inputType) &&
+                         inputType !== 'hidden' && inputType !== 'submit' && inputType !== 'button' &&
+                         inputType !== 'checkbox' && inputType !== 'radio')
+                    ) || tag === 'TEXTAREA' || el.isContentEditable;
+                    
+                    console.log('tvOS checkFocus: isTextField = ' + isTextField);
+                    
+                    if (isTextField) {
+                        return JSON.stringify({
+                            type: 'textfield',
+                            id: el.id || el.name || '',
+                            placeholder: el.placeholder || el.getAttribute('aria-label') || el.title || 'Text eingeben'
+                        });
+                    }
+                    
+                    // Auch gespeichertes Feld prüfen (von focusin Event)
+                    if (window._tvosLastFocusedInputId !== undefined) {
+                        console.log('tvOS checkFocus: Verwende gespeichertes Feld: id="' + window._tvosLastFocusedInputId + '"');
+                        var savedEl = document.getElementById(window._tvosLastFocusedInputId);
+                        if (!savedEl && window._tvosLastFocusedInputId) {
+                            savedEl = document.querySelector('input[name="' + window._tvosLastFocusedInputId + '"]');
+                        }
+                        if (savedEl) {
+                            return JSON.stringify({
+                                type: 'textfield',
+                                id: window._tvosLastFocusedInputId,
+                                placeholder: window._tvosLastFocusedInputPlaceholder || 'Text eingeben'
+                            });
+                        }
+                    }
+                    
+                    return JSON.stringify({ type: 'other', tag: tag, id: el.id || '', inputType: inputType });
+                })();
+            """
+            
+            let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+            guard webView.responds(to: jsSelector) else {
+                scrollWebViewLogger.error("❌ WebView responds nicht auf JS selector!")
+                return
+            }
+            
+            guard let unmanaged = webView.perform(jsSelector, with: script),
+                  let result = unmanaged.takeUnretainedValue() as? String else {
+                scrollWebViewLogger.error("❌ JavaScript returned nil!")
+                return
+            }
+            
+            scrollWebViewLogger.info("📋 checkForTextFieldFocus JS Ergebnis: '\(result)'")
+            
+            guard let data = result.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+                scrollWebViewLogger.error("❌ JSON Parsing fehlgeschlagen für: '\(result)'")
+                return
+            }
+            
+            let type = json["type"] ?? "unknown"
+            scrollWebViewLogger.info("📋 Typ: '\(type)', id: '\(json["id"] ?? "")', tag: '\(json["tag"] ?? "")'")
+            
+            guard type == "textfield" else {
+                scrollWebViewLogger.info("ℹ️ Kein Textfeld fokussiert (type='\(type)'), kein Sheet öffnen")
+                return
+            }
+            
+            let elementId = json["id"] ?? ""
+            let placeholder = json["placeholder"] ?? L10n.Browser.enterText
+            
+            scrollWebViewLogger.info("✅ Textfeld erkannt! id='\(elementId)', placeholder='\(placeholder)' → öffne Eingabe-Sheet")
+            
+            DispatchQueue.main.async {
+                self.parent.onTextInputRequired?(elementId, placeholder)
+            }
+        }
+        
         // MARK: - WebView Delegate Methods
         
         @objc func webViewDidStartLoad(_ webView: UIView) {
-            // FIX: Main Thread Check
             if Thread.isMainThread {
                 self.parent.isLoading = true
             } else {
@@ -384,7 +719,6 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
         }
         
         @objc func webViewDidFinishLoad(_ webView: UIView) {
-            // FIX: Alle Operationen auf Main Thread verschieben
             let updateUI = { [weak self] in
                 guard let self = self else { return }
                 self.parent.isLoading = false
@@ -403,6 +737,7 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
                 
                 self.applyViewportFix(webView)
                 self.injectVideoFullscreenPrevention(webView)
+                self.injectTextFieldDetection(webView)
             }
             
             if Thread.isMainThread {
@@ -441,8 +776,15 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
             }
         }
         
+        private func injectTextFieldDetection(_ webView: UIView) {
+            let jsSelector = NSSelectorFromString("stringByEvaluatingJavaScriptFromString:")
+            if webView.responds(to: jsSelector) {
+                let result = webView.perform(jsSelector, with: ScrollWebViewRepresentable.textFieldDetectionJS)?.takeUnretainedValue() as? String
+                scrollWebViewLogger.info("💉 TextFieldDetection injected: '\(result ?? "nil")'")
+            }
+        }
+        
         @objc func webView(_ webView: UIView, didFailLoadWithError error: Error) {
-            // FIX: Main Thread Check
             if Thread.isMainThread {
                 self.parent.isLoading = false
             } else {
@@ -480,10 +822,11 @@ struct ScrollWebViewRepresentable: UIViewRepresentable {
     }
 }
 
-// MARK: - Custom Container View that intercepts Play/Pause presses
+// MARK: - Custom Container View that intercepts Play/Pause and Select presses
 
 class ScrollWebViewContainer: UIView {
     var onPlayPause: (() -> Void)?
+    var onSelect: (() -> Void)?
     
     override var canBecomeFocused: Bool {
         return true
@@ -500,7 +843,20 @@ class ScrollWebViewContainer: UIView {
         }
         
         if !handled {
+            // WICHTIG: Erst den nativen Klick ausführen lassen
             super.pressesEnded(presses, with: event)
+            
+            // DANN nach kurzer Verzögerung prüfen ob ein Textfeld fokussiert wurde
+            for press in presses {
+                if press.type == .select {
+                    scrollWebViewLogger.info("⏱️ Select-Taste: warte 0.3s bevor checkForTextFieldFocus...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                        scrollWebViewLogger.info("⏱️ 0.3s vergangen, rufe onSelect auf")
+                        self?.onSelect?()
+                    }
+                    break
+                }
+            }
         }
     }
     

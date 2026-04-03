@@ -33,7 +33,7 @@ struct VideoResultGridView: View {
                 .padding(.bottom, TVOSDesign.Spacing.safeAreaBottom + 100)
             }
         }
-        .accessibilityLabel("Videosuchergebnisse")
+        .accessibilityLabel(L10n.Search.videoResults)
     }
 }
 
@@ -46,18 +46,18 @@ struct VideoEmptyStateView: View {
                 .font(.system(size: 80, weight: .light))
                 .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
             
-            Text("Keine Videos gefunden")
+            Text(L10n.VideoResults.noVideos)
                 .font(.system(size: TVOSDesign.Typography.title2, weight: .semibold))
                 .foregroundColor(TVOSDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
             
             VStack(spacing: 12) {
-                Text("Für diese Suchanfrage wurden keine Videos gefunden.")
+                Text(L10n.VideoResults.noVideosMessage)
                     .font(.system(size: TVOSDesign.Typography.body, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                     .multilineTextAlignment(.center)
                 
-                Text("Versuchen Sie es mit anderen Suchbegriffen oder wechseln Sie zu einem anderen Tab.")
+                Text(L10n.VideoResults.noVideosTip)
                     .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
                     .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                     .multilineTextAlignment(.center)
@@ -109,7 +109,7 @@ struct VideoResultCard: View {
                                             .progressViewStyle(CircularProgressViewStyle(tint: TVOSDesign.Colors.secondaryLabel))
                                             .scaleEffect(1.5)
                                         
-                                        Text("Lade Video...")
+                                        Text(L10n.Video.videoLoading)
                                             .font(.system(size: TVOSDesign.Typography.footnote))
                                             .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                                     }
@@ -119,7 +119,7 @@ struct VideoResultCard: View {
                                             .font(.system(size: 40))
                                             .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                                         
-                                        Text("Video nicht verfügbar")
+                                        Text(L10n.VideoResults.videoUnavailable)
                                             .font(.system(size: TVOSDesign.Typography.footnote))
                                             .foregroundColor(TVOSDesign.Colors.tertiaryLabel)
                                             .multilineTextAlignment(.center)

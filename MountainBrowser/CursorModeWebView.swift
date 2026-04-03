@@ -53,13 +53,13 @@ struct WebViewTextInputSheet: View {
                         .foregroundColor(TVOSDesign.Colors.primaryLabel)
                         .multilineTextAlignment(.center)
                     
-                    Text("Gib deinen Text ein und drücke OK")
+                    Text(L10n.Browser.enterTextAndPressOK)
                         .font(.system(size: TVOSDesign.Typography.callout, weight: .regular))
                         .foregroundColor(TVOSDesign.Colors.secondaryLabel)
                 }
                 
                 // Eingabefeld
-                TextField("Text eingeben", text: $textValue)
+                TextField(L10n.Browser.enterText, text: $textValue)
                     .font(.system(size: TVOSDesign.Typography.title3, weight: .semibold))
                     .foregroundColor(TVOSDesign.Colors.primaryLabel)
                     .keyboardType(.default)
@@ -93,7 +93,7 @@ struct WebViewTextInputSheet: View {
                         HStack(spacing: 12) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 24))
-                            Text("OK")
+                            Text(L10n.General.ok)
                                 .font(.system(size: TVOSDesign.Typography.title3, weight: .bold))
                         }
                         .foregroundColor(.white)
@@ -158,7 +158,7 @@ struct CursorModeWebView: View {
     // Texteingabe-Sheet für Formulare
     @State private var showTextInputSheet: Bool = false
     @State private var textInputValue: String = ""
-    @State private var textInputPrompt: String = "Text eingeben"
+    @State private var textInputPrompt: String = L10n.Browser.enterText
     @State private var pendingInputElementId: String? = nil
     
     // Hover-State für Navigation Bar Buttons
@@ -185,7 +185,7 @@ struct CursorModeWebView: View {
     }
     
     private var pageTitle: String {
-        title.isEmpty ? "Laden..." : title
+        title.isEmpty ? L10n.General.loading : title
     }
     
     // Computed Property für Mobile-Modus basierend auf User-Agent
@@ -448,7 +448,7 @@ struct CursorModeWebView: View {
                     Image(systemName: "arrow.left.arrow.right")
                         .foregroundColor(hoveredNavBarButton == .settings ? .white : .blue)
                         .font(.system(size: 20, weight: .semibold))
-                    Text("Scroll Modus")
+                    Text(L10n.Browser.scrollMode)
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(hoveredNavBarButton == .settings ? .white : .blue)
                 }
@@ -536,7 +536,7 @@ struct CursorModeWebView: View {
         }
         
         pendingInputElementId = elementId
-        textInputPrompt = placeholder.isEmpty ? "Text eingeben" : placeholder
+        textInputPrompt = placeholder.isEmpty ? L10n.Browser.enterText : placeholder
         textInputValue = ""
         
         // Kleine Verzögerung, damit die WebView Layout-Updates abschließen kann
@@ -555,6 +555,9 @@ struct CursorModeWebView: View {
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         
+        // FIX: Robusteres JavaScript das auch mit React/Amazon funktioniert
+        // Verwendet nativeInputValueSetter für Frameworks die value-Änderungen nicht über
+        // einfaches element.value = ... erkennen
         let script: String
         if let elementId = pendingInputElementId, !elementId.isEmpty {
             script = """
@@ -564,18 +567,39 @@ struct CursorModeWebView: View {
                         element = document.querySelector('input[name="\(elementId)"]');
                     }
                     if (!element) {
-                        element = document.querySelector('input[type="text"], input[type="search"], textarea');
+                        element = document.querySelector('[aria-label="\(elementId)"]');
+                    }
+                    if (!element) {
+                        element = document.activeElement;
+                        if (!element || (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA')) {
+                            element = document.querySelector('input[type="text"], input[type="search"], input:not([type]), textarea, [contenteditable="true"]');
+                        }
                     }
                     if (element) {
-                        element.value = '\(escapedValue)';
+                        element.focus();
+                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                        if (!nativeSetter) nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+                        if (nativeSetter && nativeSetter.set) {
+                            nativeSetter.set.call(element, '\(escapedValue)');
+                        } else {
+                            element.value = '\(escapedValue)';
+                        }
+                        element.dispatchEvent(new Event('focus', { bubbles: true }));
                         element.dispatchEvent(new Event('input', { bubbles: true }));
                         element.dispatchEvent(new Event('change', { bubbles: true }));
+                        element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+                        element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
                         
                         var form = element.closest('form');
                         if (form) {
-                            form.submit();
+                            var submitBtn = form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+                            if (submitBtn) {
+                                submitBtn.click();
+                            } else {
+                                form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                            }
                         }
-                        return 'success';
+                        return 'success:' + element.tagName + '#' + (element.id || element.name || '?');
                     }
                     return 'element_not_found';
                 })();
@@ -583,17 +607,54 @@ struct CursorModeWebView: View {
         } else {
             script = """
                 (function() {
-                    var element = document.querySelector('input[type="text"], input[type="search"], textarea');
+                    var element = document.activeElement;
+                    if (!element || (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA')) {
+                        var selectors = [
+                            'input[type="search"]',
+                            'input[type="text"]',
+                            'input[name*="search"]',
+                            'input[name*="query"]',
+                            'input[name*="keyword"]',
+                            'input[name*="field"]',
+                            'input[aria-label*="search" i]',
+                            'input[aria-label*="such" i]',
+                            'input[placeholder*="search" i]',
+                            'input[placeholder*="such" i]',
+                            'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"])',
+                            'textarea',
+                            '[contenteditable="true"]'
+                        ];
+                        for (var i = 0; i < selectors.length; i++) {
+                            element = document.querySelector(selectors[i]);
+                            if (element && element.offsetParent !== null) break;
+                            element = null;
+                        }
+                    }
                     if (element) {
-                        element.value = '\(escapedValue)';
+                        element.focus();
+                        var nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                        if (!nativeSetter) nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+                        if (nativeSetter && nativeSetter.set) {
+                            nativeSetter.set.call(element, '\(escapedValue)');
+                        } else {
+                            element.value = '\(escapedValue)';
+                        }
+                        element.dispatchEvent(new Event('focus', { bubbles: true }));
                         element.dispatchEvent(new Event('input', { bubbles: true }));
                         element.dispatchEvent(new Event('change', { bubbles: true }));
+                        element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+                        element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
                         
                         var form = element.closest('form');
                         if (form) {
-                            form.submit();
+                            var submitBtn = form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+                            if (submitBtn) {
+                                submitBtn.click();
+                            } else {
+                                form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                            }
                         }
-                        return 'success';
+                        return 'success:' + element.tagName + '#' + (element.id || element.name || '?');
                     }
                     return 'element_not_found';
                 })();
@@ -658,6 +719,7 @@ struct CursorModeWebView: View {
         let clampedX = max(0, min(webViewFrame.width, webViewRelativeX))
         let clampedY = max(0, min(webViewFrame.height, webViewRelativeY))
         
+        // FIX: Verbesserte Textfeld-Erkennung die auch Amazon, Google etc. erkennt
         let script = """
             (function() {
                 var element = document.elementFromPoint(\(clampedX), \(clampedY));
@@ -665,17 +727,27 @@ struct CursorModeWebView: View {
                     return JSON.stringify({ type: 'none', id: '', placeholder: '' });
                 }
                 
-                var isTextField = (
-                    element.tagName === 'INPUT' && 
-                    ['text', 'search', 'email', 'url', 'tel', 'password'].includes(element.type)
-                ) || element.tagName === 'TEXTAREA' || element.isContentEditable;
-                
-                if (isTextField) {
-                    return JSON.stringify({
-                        type: 'textfield',
-                        id: element.id || element.name || '',
-                        placeholder: element.placeholder || element.getAttribute('aria-label') || 'Text eingeben'
-                    });
+                // Prüfe ob das Element selbst oder ein Parent ein Textfeld ist
+                var checkElement = element;
+                for (var i = 0; i < 5 && checkElement; i++) {
+                    var tag = checkElement.tagName;
+                    var inputType = (checkElement.type || '').toLowerCase();
+                    
+                    var isTextField = (
+                        (tag === 'INPUT' && 
+                         ['text', 'search', 'email', 'url', 'tel', 'password', 'number', ''].includes(inputType) &&
+                         inputType !== 'hidden' && inputType !== 'submit' && inputType !== 'button' &&
+                         inputType !== 'checkbox' && inputType !== 'radio')
+                    ) || tag === 'TEXTAREA' || checkElement.isContentEditable;
+                    
+                    if (isTextField) {
+                        return JSON.stringify({
+                            type: 'textfield',
+                            id: checkElement.id || checkElement.name || '',
+                            placeholder: checkElement.placeholder || checkElement.getAttribute('aria-label') || checkElement.title || 'Text eingeben'
+                        });
+                    }
+                    checkElement = checkElement.parentElement;
                 }
                 
                 var linkElement = element.closest('a[href]');
@@ -714,7 +786,7 @@ struct CursorModeWebView: View {
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
                let type = json["type"], type == "textfield" {
                 let elementId = json["id"] ?? ""
-                let placeholder = json["placeholder"] ?? "Text eingeben"
+                let placeholder = json["placeholder"] ?? L10n.Browser.enterText
                 
                 self.handleTextInputRequest(elementId: elementId, placeholder: placeholder)
             }
@@ -964,6 +1036,25 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
         """
     }
     
+    /// Configures UIWebView media settings to force inline playback and prevent
+    /// the native fullscreen video player from launching (which crashes on tvOS).
+    private func configureWebViewMediaSettings(_ webView: UIView) {
+        let allowsInlineMediaPlayback = NSSelectorFromString("setAllowsInlineMediaPlayback:")
+        if webView.responds(to: allowsInlineMediaPlayback) {
+            webView.perform(allowsInlineMediaPlayback, with: true as NSNumber)
+        }
+        
+        let mediaPlaybackRequiresUserAction = NSSelectorFromString("setMediaPlaybackRequiresUserAction:")
+        if webView.responds(to: mediaPlaybackRequiresUserAction) {
+            webView.perform(mediaPlaybackRequiresUserAction, with: false as NSNumber)
+        }
+        
+        let mediaPlaybackAllowsAirPlay = NSSelectorFromString("setMediaPlaybackAllowsAirPlay:")
+        if webView.responds(to: mediaPlaybackAllowsAirPlay) {
+            webView.perform(mediaPlaybackAllowsAirPlay, with: false as NSNumber)
+        }
+    }
+    
     func makeUIView(context: Context) -> UIView {
         guard Thread.isMainThread else {
             fatalError("makeUIView muss auf dem Main-Thread aufgerufen werden!")
@@ -1000,6 +1091,10 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
         webView.backgroundColor = .white
         webView.isOpaque = true
         webView.isUserInteractionEnabled = true
+        
+        // FIX: Configure media settings to force inline playback and prevent
+        // the WebAVPlayerViewController crash on tvOS
+        configureWebViewMediaSettings(webView)
         
         if let scrollView = webView.value(forKey: "scrollView") as? UIScrollView {
             scrollView.layoutMargins = .zero
@@ -1239,11 +1334,14 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             self.containerView = nil
         }
         
+        // FIX: Inject video fullscreen prevention as early as possible — during load start
         @objc func webViewDidStartLoad(_ webView: UIView) {
             guard !isInvalidated else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, !self.isInvalidated else { return }
                 self.parent.isLoading = true
+                // Inject video prevention early so it's in place before any video element triggers fullscreen
+                self.injectVideoFullscreenPrevention(webView)
             }
         }
         
@@ -1278,6 +1376,8 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
                 guard let self = self, !self.isInvalidated else { return }
                 self.injectJavaScriptIfNeeded(webView)
                 self.applyViewportAndZoom(webView)
+                // Re-inject after page finishes loading to catch any late-added video elements
+                self.injectVideoFullscreenPrevention(webView)
             }
         }
         
@@ -1292,6 +1392,16 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
             parent.safeExecuteJavaScript(webView, script: CursorWebViewIntegrated.cursorStyleJavaScript)
             
             hasInjectedJavaScript = true
+        }
+        
+        private func injectVideoFullscreenPrevention(_ webView: UIView) {
+            guard Thread.isMainThread else {
+                DispatchQueue.main.async { [weak self] in self?.injectVideoFullscreenPrevention(webView) }
+                return
+            }
+            guard !isInvalidated else { return }
+            
+            parent.safeExecuteJavaScript(webView, script: ScrollWebViewRepresentable.videoFullscreenPreventionJS)
         }
         
         private func applyViewportAndZoom(_ webView: UIView) {
@@ -1341,6 +1451,12 @@ struct CursorWebViewIntegrated: UIViewRepresentable {
                 DispatchQueue.main.async { [weak self] in
                     self?.isNavigatingInternally = false
                 }
+            }
+            
+            // FIX: Inject video fullscreen prevention early on navigation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self = self, !self.isInvalidated else { return }
+                self.injectVideoFullscreenPrevention(webView)
             }
             
             return parent.onNavigationAction(request)

@@ -90,7 +90,7 @@ struct MainBrowserView: View {
                     onSearch: {
                         Task {
                             if !searchViewModel.searchQuery.isEmpty {
-                                await tabManager.createSearchTab(query: searchViewModel.searchQuery)
+                                _ = await tabManager.createSearchTab(query: searchViewModel.searchQuery)
                                 await MainActor.run {
                                     searchViewModel.searchQuery = ""
                                 }
@@ -145,14 +145,27 @@ struct MainBrowserView: View {
         }
         .fullScreenCover(item: $selectedResult) { result in
             if result.contentType == .video, let videoURL = extractVideoURL(from: result) {
-                NativeVideoPlayerView(
-                    url: videoURL,
-                    title: result.title,
-                    isPresented: .init(
-                        get: { selectedResult != nil },
-                        set: { if !$0 { selectedResult = nil } }
+                // Check if it's a direct video file (mp4, m3u8, etc.) vs a web-based video (YouTube, Vimeo)
+                if isDirectVideoURL(videoURL) {
+                    NativeVideoPlayerView(
+                        url: videoURL,
+                        title: result.title,
+                        isPresented: .init(
+                            get: { selectedResult != nil },
+                            set: { if !$0 { selectedResult = nil } }
+                        )
                     )
-                )
+                } else {
+                    // YouTube/Vimeo/web videos: open in fullscreen WebView for inline playback
+                    FullscreenWebViewWithSession(
+                        url: videoURL.absoluteString,
+                        sessionManager: sessionManager,
+                        isPresented: .init(
+                            get: { selectedResult != nil },
+                            set: { if !$0 { selectedResult = nil } }
+                        )
+                    )
+                }
             } else {
                 FullscreenWebViewWithSession(
                     url: result.url,
@@ -171,12 +184,20 @@ struct MainBrowserView: View {
     
     // MARK: - Video URL Extraction
     
+    /// Checks if a URL points to a direct video file that AVPlayer can handle natively.
+    private func isDirectVideoURL(_ url: URL) -> Bool {
+        let urlString = url.absoluteString.lowercased()
+        let directExtensions = [".mp4", ".m3u8", ".mov", ".ts"]
+        return directExtensions.contains(where: { urlString.contains($0) })
+    }
+    
     private func extractVideoURL(from result: SearchResult) -> URL? {
         let urlString = result.url
         
         if urlString.contains("youtube.com/watch") || urlString.contains("youtu.be") {
             if let videoId = extractYouTubeVideoID(from: urlString) {
-                let embedURL = "https://www.youtube.com/embed/\(videoId)?autoplay=1&playsinline=1"
+                // Use embed URL with autoplay and playsinline to play inline in UIWebView
+                let embedURL = "https://www.youtube.com/embed/\(videoId)?autoplay=1&playsinline=1&controls=1&rel=0"
                 return URL(string: embedURL)
             }
         }
